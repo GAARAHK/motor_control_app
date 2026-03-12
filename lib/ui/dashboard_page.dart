@@ -18,7 +18,7 @@ class DashboardPage extends StatefulWidget {
 class _DashboardPageState extends State<DashboardPage> {
   List<MotorConfigTemplate> _templates = [];
   final ScrollController _hScrollController = ScrollController();
-  final ScrollController _vScrollController = ScrollController(); // 添加纵向滚动控制�?
+  final ScrollController _vScrollController = ScrollController(); // 添加纵向滚动控制�?
 
   @override
   void initState() {
@@ -110,7 +110,7 @@ class _DashboardPageState extends State<DashboardPage> {
             ),
             const SizedBox(width: 12),
             Text(
-              ''
+              '',
               style: const TextStyle(color: Colors.grey),
             ),
           ],
@@ -156,7 +156,70 @@ class _DashboardPageState extends State<DashboardPage> {
       ],
     );
   }
-}
+  Widget _buildMotorRow(BuildContext context, MotorState motorState, int rowIndex) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '第 ${rowIndex + 1} 组 (CH-${rowIndex * 5 + 1}~CH-${rowIndex * 5 + 5})',
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              Row(
+                children: [
+                  TextButton.icon(
+                    icon: const Icon(Icons.play_arrow),
+                    label: const Text('启动本列'),
+                    onPressed: () {
+                      for (int i = 0; i < 5; i++) {
+                        int idx = rowIndex * 5 + i;
+                        if (idx < motorState.motors.length) {
+                          motorState.startMotorSequence(idx);
+                        }
+                      }
+                    },
+                  ),
+                  TextButton.icon(
+                    icon: const Icon(Icons.stop),
+                    label: const Text('停止本列'),
+                    onPressed: () {
+                      for (int i = 0; i < 5; i++) {
+                         int idx = rowIndex * 5 + i;
+                         if (idx < motorState.motors.length) {
+                           motorState.stopMotorSequence(idx);
+                         }
+                      }
+                    },
+                  ),
+                ],
+              )
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: List.generate(5, (colIndex) {
+              int idx = rowIndex * 5 + colIndex;
+              if (idx >= motorState.motors.length) return const Expanded(child: SizedBox.shrink());
+              return Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                  child: AspectRatio(
+                    aspectRatio: 1.0,
+                    child: _MotorCard(motor: motorState.motors[idx], index: idx),
+                  ),
+                ),
+              );
+            }),
+          ),
+        ],
+      ),
+    );
+  }}
 
 class _MotorCard extends StatelessWidget {
   final SingleMotorState motor;
@@ -259,7 +322,7 @@ class _MotorCard extends StatelessWidget {
                       isDense: true,
                       contentPadding: const EdgeInsets.symmetric(vertical: 4),
                       labelText: '扫码接入',
-                      hintText: motor.qrCode.isEmpty ? '待扫�?..' : motor.qrCode,
+                      hintText: motor.qrCode.isEmpty ? '待扫�?..' : motor.qrCode,
                     ),
                     onSubmitted: (val) {
                       context.read<MotorState>().bindQRCode(index, val);

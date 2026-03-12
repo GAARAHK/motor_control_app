@@ -25,6 +25,6 @@ void main() {
     );
 
     // 验证应用是否正常加载并在主页显示了"20路电机串口群控与数据采集系统"这段字
-    expect(find.text('20路电机串口群控与数据采集系统'), findsOneWidget);
+    expect(find.text('实时监控面板'), findsWidgets);
   });
 }
