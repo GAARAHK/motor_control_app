@@ -110,6 +110,7 @@ class SerialManager {
   void closePorts() {
     if (_comA?.isOpen == true) _comA?.close();
     if (_comB?.isOpen == true) _comB?.close();
+    isConnected = false;
   }
 
   // ============== COM_A: 单路直流电机控制 ==============

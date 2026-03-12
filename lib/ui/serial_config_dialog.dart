@@ -71,6 +71,13 @@ class _SerialConfigDialogState extends State<SerialConfigDialog> {
     }
   }
 
+  void _handleDisconnect() {
+    SerialManager().closePorts();
+    setState(() {});
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已断开串口连接。')));
+  }
+
   Future<void> _handleSendConfig() async {
     bool isComA = _targetBus == 'COM_A';
     int address = int.tryParse(_deviceAddressCtrl.text) ?? 1;
@@ -228,10 +235,21 @@ class _SerialConfigDialogState extends State<SerialConfigDialog> {
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        ElevatedButton.icon(
-                          icon: const Icon(Icons.link),
-                          label: const Text('应用并连接'),
-                          onPressed: _handleConnect,
+                        Row(
+                          children: [
+                            if (SerialManager().isConnected)
+                              OutlinedButton.icon(
+                                icon: const Icon(Icons.link_off, color: Colors.orange),
+                                label: const Text('断开连接', style: TextStyle(color: Colors.orange)),
+                                onPressed: _handleDisconnect,
+                              ),
+                            const SizedBox(width: 8),
+                            ElevatedButton.icon(
+                              icon: const Icon(Icons.link),
+                              label: const Text('应用并连接'),
+                              onPressed: _handleConnect,
+                            ),
+                          ],
                         )
                       ],
                     ),
