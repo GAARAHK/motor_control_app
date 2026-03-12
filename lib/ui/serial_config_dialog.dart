@@ -12,10 +12,12 @@ class SerialConfigDialog extends StatefulWidget {
 class _SerialConfigDialogState extends State<SerialConfigDialog> {
   String? selectedComA;
   String? selectedComB;
-  int _baudRate = 19200;
-  int _parity = SerialPortParity.none;
-  int _dataBits = 8;
-  int _stopBits = 1;
+  int _baudRateA = 19200;
+  int _parityA = SerialPortParity.none;
+  int _baudRateB = 19200;
+  int _parityB = SerialPortParity.none;
+  final int _dataBits = 8;
+  final int _stopBits = 1;
 
   // 高级配置参数
   bool _isAdvancedVisible = false;
@@ -49,12 +51,16 @@ class _SerialConfigDialogState extends State<SerialConfigDialog> {
       return;
     }
     bool success = await SerialManager().initPorts(
-      selectedComA!, 
+      selectedComA!,
       selectedComB!,
-      baudRate: _baudRate,
-      dataBits: _dataBits,
-      stopBits: _stopBits,
-      parity: _parity,
+      baudRateA: _baudRateA,
+      dataBitsA: _dataBits,
+      stopBitsA: _stopBits,
+      parityA: _parityA,
+      baudRateB: _baudRateB,
+      dataBitsB: _dataBits,
+      stopBitsB: _stopBits,
+      parityB: _parityB,
     );
     setState(() {}); // 刷新转态
     if (!mounted) return;
@@ -95,7 +101,7 @@ class _SerialConfigDialogState extends State<SerialConfigDialog> {
     return AlertDialog(
       title: const Text('串口与设备配置面板', style: TextStyle(fontWeight: FontWeight.bold)),
       content: SizedBox(
-        width: 600,
+        width: 750,
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -108,76 +114,107 @@ class _SerialConfigDialogState extends State<SerialConfigDialog> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('总线绑定', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    const Text('总线绑定与参数配置', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                     const Divider(),
                     Row(
                       children: [
-                        const Text('COM_A (电机控制总线): '),
+                        const SizedBox(
+                          width: 100,
+                          child: Text('COM_A (电机):', style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                        Expanded(
+                          flex: 3,
+                          child: DropdownButton<String>(
+                            value: selectedComA,
+                            isExpanded: true,
+                            hint: const Text('未选择'),
+                            items: ports.map((p) => DropdownMenuItem(value: p, child: Text(p))).toList(),
+                            onChanged: (val) => setState(() => selectedComA = val),
+                          )
+                        ),
+                        const SizedBox(width: 16),
+                        const Text('波特率:'),
                         const SizedBox(width: 8),
-                        Expanded(child: DropdownButton<String>(
-                          value: selectedComA,
-                          isExpanded: true,
-                          hint: const Text('未选择'),
-                          items: ports.map((p) => DropdownMenuItem(value: p, child: Text(p))).toList(),
-                          onChanged: (val) => setState(() => selectedComA = val),
-                        )),
+                        Expanded(
+                          flex: 2,
+                          child: DropdownButton<int>(
+                            value: _baudRateA,
+                            isExpanded: true,
+                            items: _baudOptions.map((e) => DropdownMenuItem(value: int.parse(e), child: Text(e))).toList(),
+                            onChanged: (val) => setState(() => _baudRateA = val!),
+                          )
+                        ),
+                        const SizedBox(width: 16),
+                        const Text('校验:'),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          flex: 2,
+                          child: DropdownButton<int>(
+                            value: _parityA,
+                            isExpanded: true,
+                            items: const [
+                              DropdownMenuItem(value: SerialPortParity.none, child: Text('无(None)')),
+                              DropdownMenuItem(value: SerialPortParity.odd, child: Text('奇(Odd)')),
+                              DropdownMenuItem(value: SerialPortParity.even, child: Text('偶(Even)')),
+                            ],
+                            onChanged: (val) => setState(() => _parityA = val!),
+                          )
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        const SizedBox(
+                          width: 100,
+                          child: Text('COM_B (采集):', style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                        Expanded(
+                          flex: 3,
+                          child: DropdownButton<String>(
+                            value: selectedComB,
+                            isExpanded: true,
+                            hint: const Text('未选择'),
+                            items: ports.map((p) => DropdownMenuItem(value: p, child: Text(p))).toList(),
+                            onChanged: (val) => setState(() => selectedComB = val),
+                          )
+                        ),
+                        const SizedBox(width: 16),
+                        const Text('波特率:'),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          flex: 2,
+                          child: DropdownButton<int>(
+                            value: _baudRateB,
+                            isExpanded: true,
+                            items: _baudOptions.map((e) => DropdownMenuItem(value: int.parse(e), child: Text(e))).toList(),
+                            onChanged: (val) => setState(() => _baudRateB = val!),
+                          )
+                        ),
+                        const SizedBox(width: 16),
+                        const Text('校验:'),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          flex: 2,
+                          child: DropdownButton<int>(
+                            value: _parityB,
+                            isExpanded: true,
+                            items: const [
+                              DropdownMenuItem(value: SerialPortParity.none, child: Text('无(None)')),
+                              DropdownMenuItem(value: SerialPortParity.odd, child: Text('奇(Odd)')),
+                              DropdownMenuItem(value: SerialPortParity.even, child: Text('偶(Even)')),
+                            ],
+                            onChanged: (val) => setState(() => _parityB = val!),
+                          )
+                        ),
                       ],
                     ),
                     const SizedBox(height: 8),
                     Row(
                       children: [
-                        const Text('COM_B (电流采集总线): '),
-                        const SizedBox(width: 8),
-                        Expanded(child: DropdownButton<String>(
-                          value: selectedComB,
-                          isExpanded: true,
-                          hint: const Text('未选择'),
-                          items: ports.map((p) => DropdownMenuItem(value: p, child: Text(p))).toList(),
-                          onChanged: (val) => setState(() => selectedComB = val),
-                        )),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    const Text('高级连接参数', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.grey)),
-                    Row(
-                      children: [
-                        Expanded(child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text('波特率', style: TextStyle(fontSize: 12)),
-                            DropdownButton<int>(
-                              value: _baudRate,
-                              isExpanded: true,
-                              items: _baudOptions.map((e) => DropdownMenuItem(value: int.parse(e), child: Text(e))).toList(),
-                              onChanged: (val) => setState(() => _baudRate = val!),
-                            ),
-                          ],
-                        )),
-                        const SizedBox(width: 8),
-                        Expanded(child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text('校验位', style: TextStyle(fontSize: 12)),
-                            DropdownButton<int>(
-                              value: _parity,
-                              isExpanded: true,
-                              items: const [
-                                DropdownMenuItem(value: SerialPortParity.none, child: Text('None (无)')),
-                                DropdownMenuItem(value: SerialPortParity.odd, child: Text('Odd (奇)')),
-                                DropdownMenuItem(value: SerialPortParity.even, child: Text('Even (偶)')),
-                              ],
-                              onChanged: (val) => setState(() => _parity = val!),
-                            ),
-                          ],
-                        )),
-                        const SizedBox(width: 8),
-                        Expanded(child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text('数据位/停止位', style: TextStyle(fontSize: 12)),
-                            Text('$_dataBits 位 / $_stopBits 位', style: const TextStyle(fontWeight: FontWeight.bold)),
-                          ],
-                        )),
+                        const Text('系统固定参数:', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                        const SizedBox(width: 16),
+                        Text('数据位: $_dataBits 位   停止位: $_stopBits 位', style: const TextStyle(color: Colors.grey, fontSize: 12)),
                       ],
                     ),
                     const SizedBox(height: 16),

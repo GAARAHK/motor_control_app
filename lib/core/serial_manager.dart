@@ -17,10 +17,15 @@ class SerialManager {
   String? portBName;
   bool isConnected = false;
 
-  int _baudRate = 19200;
-  int _dataBits = 8;
-  int _stopBits = 1;
-  int _parity = SerialPortParity.none;
+  int _baudRateA = 19200;
+  int _dataBitsA = 8;
+  int _stopBitsA = 1;
+  int _parityA = SerialPortParity.none;
+
+  int _baudRateB = 19200;
+  int _dataBitsB = 8;
+  int _stopBitsB = 1;
+  int _parityB = SerialPortParity.none;
 
   // 使用 Completer 进行异步等待回调机制
   bool _isComABusy = false;
@@ -31,17 +36,26 @@ class SerialManager {
 
   /// 配置参数并尝试打开两路串口
   Future<bool> initPorts(String portAName, String portBName, {
-    int baudRate = 19200, 
-    int dataBits = 8, 
-    int stopBits = 1, 
-    int parity = SerialPortParity.none
+    int baudRateA = 19200, 
+    int dataBitsA = 8, 
+    int stopBitsA = 1, 
+    int parityA = SerialPortParity.none,
+    int baudRateB = 19200, 
+    int dataBitsB = 8, 
+    int stopBitsB = 1, 
+    int parityB = SerialPortParity.none
   }) async {
     this.portAName = portAName;
     this.portBName = portBName;
-    _baudRate = baudRate;
-    _dataBits = dataBits;
-    _stopBits = stopBits;
-    _parity = parity;
+    _baudRateA = baudRateA;
+    _dataBitsA = dataBitsA;
+    _stopBitsA = stopBitsA;
+    _parityA = parityA;
+
+    _baudRateB = baudRateB;
+    _dataBitsB = dataBitsB;
+    _stopBitsB = stopBitsB;
+    _parityB = parityB;
     
     bool success = true;
 
@@ -49,7 +63,7 @@ class SerialManager {
       if (_comA != null && _comA!.isOpen) _comA!.close();
       _comA = SerialPort(portAName);
       if (_comA!.openReadWrite()) {
-        _comA!.config = _getSpConfig();
+        _comA!.config = _getSpConfigA();
       } else {
         success = false;
       }
@@ -62,7 +76,7 @@ class SerialManager {
       if (_comB != null && _comB!.isOpen) _comB!.close();
       _comB = SerialPort(portBName);
       if (_comB!.openReadWrite()) {
-         _comB!.config = _getSpConfig();
+         _comB!.config = _getSpConfigB();
       } else {
         success = false;
       }
@@ -75,12 +89,21 @@ class SerialManager {
     return success;
   }
 
-  SerialPortConfig _getSpConfig() {
+  SerialPortConfig _getSpConfigA() {
     final conf = SerialPortConfig();
-    conf.baudRate = _baudRate;
-    conf.bits = _dataBits;
-    conf.parity = _parity;
-    conf.stopBits = _stopBits;
+    conf.baudRate = _baudRateA;
+    conf.bits = _dataBitsA;
+    conf.parity = _parityA;
+    conf.stopBits = _stopBitsA;
+    return conf;
+  }
+
+  SerialPortConfig _getSpConfigB() {
+    final conf = SerialPortConfig();
+    conf.baudRate = _baudRateB;
+    conf.bits = _dataBitsB;
+    conf.parity = _parityB;
+    conf.stopBits = _stopBitsB;
     return conf;
   }
 

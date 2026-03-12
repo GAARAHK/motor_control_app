@@ -173,7 +173,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 children: [
                   TextButton.icon(
                     icon: const Icon(Icons.play_arrow),
-                    label: const Text('启动本列'),
+                    label: const Text('启动本行'),
                     onPressed: () {
                       for (int i = 0; i < 5; i++) {
                         int idx = rowIndex * 5 + i;
@@ -185,7 +185,7 @@ class _DashboardPageState extends State<DashboardPage> {
                   ),
                   TextButton.icon(
                     icon: const Icon(Icons.stop),
-                    label: const Text('停止本列'),
+                    label: const Text('停止本行'),
                     onPressed: () {
                       for (int i = 0; i < 5; i++) {
                          int idx = rowIndex * 5 + i;
