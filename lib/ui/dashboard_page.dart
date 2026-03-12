@@ -351,7 +351,7 @@ class _MotorCard extends StatelessWidget {
                       isDense: true,
                       contentPadding: const EdgeInsets.symmetric(vertical: 4),
                       labelText: '扫码接入',
-                      hintText: motor.qrCode.isEmpty ? '待扫�?..' : motor.qrCode,
+                      hintText: motor.qrCode.isEmpty ? '待扫...' : motor.qrCode,
                     ),
                     onSubmitted: (val) {
                       context.read<MotorState>().bindQRCode(index, val);

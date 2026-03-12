@@ -86,8 +86,8 @@ class MotorState extends ChangeNotifier {
     if (index < 0 || index >= 25) return;
     _motors[index].isRunning = false;
     _motors[index].status = MotorStatus.idle;
+    notifyListeners(); // 提前刷新UI，避免被底层的串口锁阻塞界面响应
     await SerialManager().sendMotorCommand(_motors[index].motorId, 'stop');
-    notifyListeners();
   }
 
   /// 启动单台电机的工况循�?
@@ -189,7 +189,10 @@ class MotorState extends ChangeNotifier {
   /// 广播全部停止
   void stopAll() {
     for (int i = 0; i < 25; i++) {
-        stopMotorSequence(i);
+        // 优化：只有实际在运行的电机才去发送结束指令，避免下发多余的25次串口指令阻塞整条总线
+        if (_motors[i].isRunning || _motors[i].status != MotorStatus.idle) {
+          stopMotorSequence(i);
+        }
     }
   }
 }
