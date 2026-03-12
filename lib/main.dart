@@ -65,7 +65,7 @@ class _MainNavigatorState extends State<MainNavigator> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('20路电机串口群控与数据采集系统'),
+        title: const Text('20路电机群控与数据采集系统'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
       ),
       body: Row(

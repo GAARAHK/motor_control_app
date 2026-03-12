@@ -171,6 +171,35 @@ class _DashboardPageState extends State<DashboardPage> {
               ),
               Row(
                 children: [
+                  if (_templates.isNotEmpty) // 如果有模板则显示批量应用按钮
+                    PopupMenuButton<MotorConfigTemplate>(
+                      tooltip: '为本行所有电机统一设置工况',
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 8.0),
+                        child: Row(
+                          children: [
+                            Icon(Icons.rule_folder, size: 18, color: Colors.blue),
+                            SizedBox(width: 4),
+                            Text('配置本行工况', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                      ),
+                      itemBuilder: (context) {
+                        return _templates.map((tpl) => PopupMenuItem(
+                          value: tpl,
+                          child: Text('应用: ${tpl.name}'),
+                        )).toList();
+                      },
+                      onSelected: (tpl) {
+                        motorState.applyConfigToRow(rowIndex, tpl);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('已将工况 [${tpl.name}] 应用至第 ${rowIndex + 1} 组'))
+                        );
+                      },
+                    )
+                  else
+                    const Text('暂无工况可配', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                  const SizedBox(width: 8),
                   TextButton.icon(
                     icon: const Icon(Icons.play_arrow),
                     label: const Text('启动本行'),
