@@ -103,6 +103,7 @@ class _HistoryPageState extends State<HistoryPage> {
                               ),
                               columns: const [
                                 DataColumn(label: Text('采集时间')),
+                                DataColumn(label: Text('数据类型')),
                                 DataColumn(label: Text('批次ID')),
                                 DataColumn(label: Text('通道/电机ID')),
                                 DataColumn(label: Text('当前循环(圈)')),
@@ -114,14 +115,29 @@ class _HistoryPageState extends State<HistoryPage> {
                                 if (timeStr.length > 19) {
                                   timeStr = timeStr.substring(0, 19).replaceAll('T', ' ');
                                 }
-                                return DataRow(cells: [
+                                
+                                bool isAlarm = row['log_type'].toString().contains('报警');
+                                
+                                return DataRow(
+                                  color: MaterialStateProperty.resolveWith((states) => isAlarm ? Colors.red.shade50 : null),
+                                  cells: [
                                   DataCell(Text(timeStr)),
+                                  DataCell(Text(
+                                    row['log_type'].toString(),
+                                    style: TextStyle(
+                                      color: isAlarm ? Colors.red : Colors.green,
+                                      fontWeight: isAlarm ? FontWeight.bold : FontWeight.normal
+                                    ),
+                                  )),
                                   DataCell(Text(row['batch_uuid'].toString())),
                                   DataCell(Text('通道 ${row['motor_id']}')),
-                                  DataCell(Text(row['loop_count'].toString())),
+                                  DataCell(Text(row['loop_count'] == -1 ? '-' : row['loop_count'].toString())),
                                   DataCell(Text(
                                     '${row['read_current']} A',
-                                    style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue),
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold, 
+                                      color: isAlarm ? Colors.red : Colors.blue
+                                    ),
                                   )),
                                 ]);
                               }).toList(),

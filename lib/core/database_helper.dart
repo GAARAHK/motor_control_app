@@ -165,15 +165,38 @@ class DatabaseHelper {
     return await db.insert('alarm_logs', alarmMap);
   }
 
-  // 5. 根据二维码查询该设备的历史流水（为查询图表页做准备）
+  // 5. 根据二维码查询该设备的历史流水及报错信息（为查询图表页做准备）
   Future<List<Map<String, dynamic>>> queryLogsByQRCode(String qrCode) async {
     final db = await instance.database;
-    return await db.query(
-      'current_logs',
-      where: 'qr_code = ?',
-      whereArgs: [qrCode],
-      orderBy: 'timestamp ASC',  // 按时间正序
-    );
+    // 使用 UNION ALL 将正常流水与报警记录合并到一起展示
+    // 为了匹配结构，正常记录给它带上 "正常记录" 的标签，报警记录带上 "触发报警异常" 以及触发限值的说明
+    final sql = '''
+      SELECT 
+        timestamp,
+        batch_uuid,
+        motor_id,
+        loop_count,
+        read_current,
+        '正常记录' AS log_type
+      FROM current_logs 
+      WHERE qr_code = ?
+
+      UNION ALL
+
+      SELECT 
+        timestamp,
+        'Alarm' AS batch_uuid,
+        motor_id,
+        -1 AS loop_count,
+        trip_current AS read_current,
+        '触发报警异常 (限值: ' || limit_value || ')' AS log_type
+      FROM alarm_logs
+      WHERE qr_code = ?
+
+      ORDER BY timestamp ASC
+    ''';
+    
+    return await db.rawQuery(sql, [qrCode, qrCode]);
   }
 
   // 6. 获取所有的批次记录
