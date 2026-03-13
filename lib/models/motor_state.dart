@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'motor_config.dart';
 import '../core/serial_manager.dart';
+import '../core/database_helper.dart';
 
 // 电机运行的内部状态机枚举
 enum MotorStatus { idle, runningFwd, runningRev, waiting, alarm }
@@ -16,6 +17,7 @@ class SingleMotorState {
   bool isAlarm;             // 是否处于报警停机状态
   MotorConfigTemplate? appliedConfig; // 该电机绑定的当前工况
   bool isRunning = false;             // 内部控制打断标记
+  String? currentBatchUuid;           // 追踪当前运行批次的唯一标识
 
   SingleMotorState({
     required this.motorId,
@@ -27,6 +29,7 @@ class SingleMotorState {
     this.isAlarm = false,
     this.isRunning = false,
     this.appliedConfig,
+    this.currentBatchUuid,
   });
 }
 
@@ -65,15 +68,39 @@ class MotorState extends ChangeNotifier {
 
   // 记录采集到的数据并判断报警逻辑
   void updateMotorData(int index, double current, int loop, {bool checkAlarm = false, double upperLimit = 10.0, double lowerLimit = 0.5}) {
-    _motors[index].actualCurrent = current;
-    _motors[index].currentLoop = loop;
+    final motor = _motors[index];
+    motor.actualCurrent = current;
+    motor.currentLoop = loop;
+
+    // 1. 电流数据落盘
+    if (motor.currentBatchUuid != null) {
+      DatabaseHelper.instance.insertCurrentLog({
+        'batch_uuid': motor.currentBatchUuid,
+        'motor_id': motor.motorId,
+        'qr_code': motor.qrCode,
+        'loop_count': loop,
+        'read_current': current,
+        'timestamp': DateTime.now().toIso8601String(),
+      });
+    }
 
     if (checkAlarm && (current > upperLimit || current < lowerLimit)) {
-      _motors[index].isAlarm = true;
-      _motors[index].status = MotorStatus.alarm;
-      _motors[index].isRunning = false;
+      motor.isAlarm = true;
+      motor.status = MotorStatus.alarm;
+      motor.isRunning = false;
+
+      // 2. 报警数据落盘
+      DatabaseHelper.instance.insertAlarmLog({
+        'timestamp': DateTime.now().toIso8601String(),
+        'qr_code': motor.qrCode,
+        'motor_id': motor.motorId,
+        'trip_current': current,
+        'limit_value': current > upperLimit ? upperLimit : lowerLimit,
+        'action_taken': 'Auto Stop (Out of Bound)',
+      });
+
       // 硬件侧急停
-      SerialManager().sendMotorCommand(_motors[index].motorId, 'stop');
+      SerialManager().sendMotorCommand(motor.motorId, 'stop');
     }
 
     notifyListeners();
@@ -94,11 +121,17 @@ class MotorState extends ChangeNotifier {
   /// 停止单台电机
   Future<void> stopMotorSequence(int index) async {
     if (index < 0 || index >= 25) return;
-    _motors[index].isRunning = false;
-    _motors[index].isAlarm = false; // 停机操作也可附带清除报警
-    _motors[index].status = MotorStatus.idle;
+    final motor = _motors[index];
+    motor.isRunning = false;
+    motor.isAlarm = false; // 停机操作也可附带清除报警
+    motor.status = MotorStatus.idle;
+
+    if (motor.currentBatchUuid != null) {
+      DatabaseHelper.instance.updateRunHistoryStatus(motor.currentBatchUuid!, 'stopped');
+    }
+
     notifyListeners(); // 提前刷新UI，避免被底层的串口锁阻塞界面响应
-    await SerialManager().sendMotorCommand(_motors[index].motorId, 'stop');
+    await SerialManager().sendMotorCommand(motor.motorId, 'stop');
   }
 
   /// 启动单台电机的工况循�?
@@ -135,9 +168,21 @@ class MotorState extends ChangeNotifier {
     if (motor.currentLoop >= motor.targetLoops) {
       motor.currentLoop = 0;
     }
-    notifyListeners();
 
     final config = motor.appliedConfig!;
+    
+    // 生成新的批次UUID并落盘
+    motor.currentBatchUuid = '${DateTime.now().millisecondsSinceEpoch}_M${motor.motorId}';
+    DatabaseHelper.instance.insertRunHistory({
+       'batch_uuid': motor.currentBatchUuid,
+       'motor_id': motor.motorId,
+       'qr_code': motor.qrCode,
+       'template_id': config.id ?? 0, 
+       'start_time': DateTime.now().toIso8601String(),
+       'end_status': 'running',
+    });
+
+    notifyListeners();
     
     try {
       while (motor.isRunning && motor.currentLoop < config.targetLoops) {
@@ -208,6 +253,16 @@ class MotorState extends ChangeNotifier {
       print('运行状态机异常: $e');
     } finally {
       // 循环全部结束，或者中途被终止
+      if (motor.currentBatchUuid != null) {
+         String endStatus = 'stopped';
+         if (motor.isAlarm) {
+           endStatus = 'alarm';
+         } else if (motor.currentLoop >= config.targetLoops) {
+           endStatus = 'completed';
+         }
+         DatabaseHelper.instance.updateRunHistoryStatus(motor.currentBatchUuid!, endStatus);
+      }
+
       if (motor.isRunning) {
         // 自然完成
         motor.isRunning = false;

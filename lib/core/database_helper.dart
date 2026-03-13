@@ -133,6 +133,55 @@ class DatabaseHelper {
     final db = await instance.database;
     return await db.delete('work_mode_templates', where: 'id = ?', whereArgs: [id]);
   }
+
+  // ============== 测试记录与日志 CRUD ==============
+
+  // 1. 插入一条新的运行批次记录
+  Future<int> insertRunHistory(Map<String, dynamic> historyMap) async {
+    final db = await instance.database;
+    return await db.insert('motor_run_history', historyMap);
+  }
+
+  // 2. 更新批次状态（例如从 running 变成为 completed 或 stopped）
+  Future<int> updateRunHistoryStatus(String batchUuid, String status) async {
+    final db = await instance.database;
+    return await db.update(
+      'motor_run_history',
+      {'end_status': status},
+      where: 'batch_uuid = ?',
+      whereArgs: [batchUuid],
+    );
+  }
+
+  // 3. 插入采集到的电流流水
+  Future<int> insertCurrentLog(Map<String, dynamic> logMap) async {
+    final db = await instance.database;
+    return await db.insert('current_logs', logMap);
+  }
+
+  // 4. 插入报警记录
+  Future<int> insertAlarmLog(Map<String, dynamic> alarmMap) async {
+    final db = await instance.database;
+    return await db.insert('alarm_logs', alarmMap);
+  }
+
+  // 5. 根据二维码查询该设备的历史流水（为查询图表页做准备）
+  Future<List<Map<String, dynamic>>> queryLogsByQRCode(String qrCode) async {
+    final db = await instance.database;
+    return await db.query(
+      'current_logs',
+      where: 'qr_code = ?',
+      whereArgs: [qrCode],
+      orderBy: 'timestamp ASC',  // 按时间正序
+    );
+  }
+
+  // 6. 获取所有的批次记录
+  Future<List<Map<String, dynamic>>> getAllRunHistories() async {
+    final db = await instance.database;
+    return await db.query('motor_run_history', orderBy: 'start_time DESC');
+  }
+
   // =============================================
 
   // 关闭数据库连接
