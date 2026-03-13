@@ -1,0 +1,1 @@
+import 'package:flutter_libserialport/flutter_libserialport.dart'; void main() { print(SerialPort('COM1').bytesAvailable); }

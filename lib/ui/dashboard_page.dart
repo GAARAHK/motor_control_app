@@ -310,15 +310,22 @@ class _MotorCard extends StatelessWidget {
                       const SizedBox(width: 2),
                       InkWell(
                         onTap: () {
-                          if (motor.isRunning) {
+                          if (motor.isAlarm) {
+                            // 报警状态下点击，执行复位操作
+                            context.read<MotorState>().resetAlarm(index);
+                          } else if (motor.isRunning) {
                             context.read<MotorState>().stopMotorSequence(index);
                           } else {
                             context.read<MotorState>().startMotorSequence(index);
                           }
                         },
                         child: Icon(
-                          motor.isRunning ? Icons.stop_circle : Icons.play_circle_fill,
-                          color: motor.isRunning ? Colors.red : Colors.green,
+                          motor.isAlarm 
+                              ? Icons.settings_backup_restore 
+                              : (motor.isRunning ? Icons.stop_circle : Icons.play_circle_fill),
+                          color: motor.isAlarm 
+                              ? Colors.orange 
+                              : (motor.isRunning ? Colors.red : Colors.green),
                           size: 18,
                         ),
                       ),
@@ -347,17 +354,34 @@ class _MotorCard extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
                   TextField(
+                    onChanged: (val) {
+                      context.read<MotorState>().bindQRCode(index, val);
+                    },
                     decoration: InputDecoration(
                       isDense: true,
                       contentPadding: const EdgeInsets.symmetric(vertical: 4),
-                      labelText: '扫码接入',
-                      hintText: motor.qrCode.isEmpty ? '待扫...' : motor.qrCode,
+                      labelText: '扫码接入口',
+                      hintText: motor.qrCode.isEmpty ? '待扫码..' : motor.qrCode,
                     ),
-                    onSubmitted: (val) {
-                      context.read<MotorState>().bindQRCode(index, val);
-                    },
                   ),
                   const SizedBox(height: 2),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('码值:', style: TextStyle(fontSize: 12)),
+                      Expanded(
+                        child: Text(
+                          motor.qrCode.isEmpty ? '未绑定' : motor.qrCode,
+                          textAlign: TextAlign.right,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: motor.qrCode.isEmpty ? Colors.grey : Colors.blue,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      )
+                    ],
+                  ),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [

@@ -142,18 +142,28 @@ class SerialManager {
       Uint8List frame = ModbusCrc.appendCRC16(data);
       
       _comA!.write(frame);
-      // 等待硬件响应 (通常为原样返回)
-      final reader = SerialPortReader(_comA!, timeout: 200);
+      
       bool success = false;
-      await for (final chunk in reader.stream) {
-        if (chunk.isNotEmpty && ModbusCrc.verifyCRC16(chunk)) {
-           // 指令回写检验成功
-           success = true;
-           break;
+      int waitCount = 0;
+      List<int> buffer = [];
+      
+      while (waitCount < 50) { // 最多等 50 x 10ms = 500ms
+        Uint8List chunk = _comA!.read(128, timeout: 10);
+        if (chunk.isNotEmpty) {
+           buffer.addAll(chunk);
+           if (ModbusCrc.verifyCRC16(Uint8List.fromList(buffer))) {
+              success = true;
+              break;
+           }
         }
+        await Future.delayed(const Duration(milliseconds: 10));
+        waitCount++;
       }
-      reader.close();
-      return success;
+      
+      if (!success) {
+        print('Serial stream timeout!');
+      }
+return success;
     } catch (e) {
       print('sendMotorCommand error: $e');
       return false;
@@ -188,28 +198,32 @@ class SerialManager {
       
       Uint8List frame = ModbusCrc.appendCRC16(data);
       _comB!.write(frame);
-
-      final reader = SerialPortReader(_comB!, timeout: 300);
-      double? result;
-      // 缓冲池，应对可能拆包的分段数据
-      List<int> buffer = []; 
       
-      await for (final chunk in reader.stream) {
-        buffer.addAll(chunk);
-        // 读取1个寄存器，返回帧长度 = 1(地址) + 1(功能码) + 1(数据长: 0x02) + 2(数据) + 2(CRC) = 7字节
-        if (buffer.length >= 7) {
-           Uint8List fullFrame = Uint8List.fromList(buffer);
-           if (ModbusCrc.verifyCRC16(fullFrame)) {
-              // 提取数据部分：01 03 02 [高位] [低位] CRC1 CRC2
-              int value = (fullFrame[3] << 8) | fullFrame[4];
-              // 通过规格换算电流/电压。文档公式：实际值 = 读数 * 量程 / 10000
-              result = (value * rangeMax) / 10000.0;
+      double? result;
+      List<int> buffer = [];
+      int waitCount = 0;
+      
+      while (waitCount < 50) { // 500ms max
+        Uint8List chunk = _comB!.read(128, timeout: 10);
+        if (chunk.isNotEmpty) {
+           buffer.addAll(chunk);
+           if (buffer.length >= 7) {
+             Uint8List fullFrame = Uint8List.fromList(buffer);
+             if (ModbusCrc.verifyCRC16(fullFrame)) {
+                int value = (fullFrame[3] << 8) | fullFrame[4];
+                result = (value * rangeMax) / 10000.0;
+             }
+             break;
            }
-           break; 
         }
+        await Future.delayed(const Duration(milliseconds: 10));
+        waitCount++;
       }
-      reader.close();
-      return result;
+      
+      if (result == null) {
+         print('Serial stream timeout!');
+      }
+return result;
     } catch (e) {
       print('readCurrent error: $e');
       return null;
@@ -248,17 +262,28 @@ class SerialManager {
       
       Uint8List frame = ModbusCrc.appendCRC16(data);
       port.write(frame);
-
-      final reader = SerialPortReader(port, timeout: 300);
+      
       bool success = false;
-      await for (final chunk in reader.stream) {
-        if (chunk.isNotEmpty && ModbusCrc.verifyCRC16(chunk)) {
-           success = true;
-           break;
+      int waitCount = 0;
+      List<int> buffer = [];
+      
+      while (waitCount < 50) { 
+        Uint8List chunk = port.read(128, timeout: 10);
+        if (chunk.isNotEmpty) {
+           buffer.addAll(chunk);
+           if (ModbusCrc.verifyCRC16(Uint8List.fromList(buffer))) {
+              success = true;
+              break;
+           }
         }
+        await Future.delayed(const Duration(milliseconds: 10));
+        waitCount++;
       }
-      reader.close();
-      return success;
+      
+      if (!success) {
+        print('Serial stream timeout!');
+      }
+return success;
     } catch (e) {
       return false;
     } finally {

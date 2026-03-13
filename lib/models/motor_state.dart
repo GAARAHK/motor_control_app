@@ -81,10 +81,21 @@ class MotorState extends ChangeNotifier {
 
   // ====================== 核心业务�?======================
 
+  /// 取消报警复位状态
+  void resetAlarm(int index) {
+    if (index >= 0 && index < 25) {
+      _motors[index].isAlarm = false;
+      _motors[index].status = MotorStatus.idle;
+      _motors[index].actualCurrent = 0.0; // 清空残留的越界电流显示
+      notifyListeners();
+    }
+  }
+
   /// 停止单台电机
   Future<void> stopMotorSequence(int index) async {
     if (index < 0 || index >= 25) return;
     _motors[index].isRunning = false;
+    _motors[index].isAlarm = false; // 停机操作也可附带清除报警
     _motors[index].status = MotorStatus.idle;
     notifyListeners(); // 提前刷新UI，避免被底层的串口锁阻塞界面响应
     await SerialManager().sendMotorCommand(_motors[index].motorId, 'stop');
@@ -95,13 +106,35 @@ class MotorState extends ChangeNotifier {
     if (index < 0 || index >= 25) return;
     final motor = _motors[index];
     if (motor.appliedConfig == null || motor.appliedConfig!.steps.isEmpty) return;
+
+    // 【关键守护】：如果这个电机已经在运行循环中，绝对不允许再次启动！
+    // 强制防抖防手滑，防止队列无限重叠把系统撑爆！
+    if (motor.isRunning) return; 
+
+
     
     // 如果已经在报错、或没有绑定扫码、或没有连上串口（这里可在此做额外守护校验）
-    if (!SerialManager().isConnected) return; // 需要先连接
+    if (!SerialManager().isConnected) {
+      // 串口未连接，拒绝启动
+      return; 
+    }
+    
+    if (motor.isAlarm) {
+      // 当前设备正处于报警锁定状态，需要人工干预（复位或重新配置）
+      return;
+    }
+
+    if (motor.qrCode.isEmpty) {
+      // 尚未绑定设备二维码（SN码），拒绝启动测试
+      return;
+    }
     
     motor.isRunning = true;
     motor.isAlarm = false;
-    motor.currentLoop = 0;
+    // 【修改点】：不再强制清零，保留断点续跑能力。只有原本设定的次数已经全部跑满了，再次点击启动才会从头来。
+    if (motor.currentLoop >= motor.targetLoops) {
+      motor.currentLoop = 0;
+    }
     notifyListeners();
 
     final config = motor.appliedConfig!;
@@ -119,8 +152,17 @@ class MotorState extends ChangeNotifier {
           if (!motor.isRunning) break; // 中途被打断停止或报�?
 
           // 1. 发送串口指令控制继电器动作
-          await SerialManager().sendMotorCommand(motor.motorId, step.action);
-          
+          bool success = await SerialManager().sendMotorCommand(motor.motorId, step.action); 
+
+          if (!success) {
+            // 【新增机制】如果驱动模块无响应或通信超时，触发报警并终止序列
+            motor.isAlarm = true;               // 切入报警锁死状态
+            motor.status = MotorStatus.alarm;   // 让 UI 显示红色的"报警停机"
+            motor.isRunning = false;            // 终止运行流水线
+            notifyListeners();                  // 立即通知改变卡片样式
+            break;                              // 跳出整个工况运转的解析循环
+          }
+
           if (step.action == 'fwd') {
              motor.status = MotorStatus.runningFwd;
           } else if (step.action == 'rev') {
