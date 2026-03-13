@@ -1,16 +1,88 @@
-# motor_control_app
+# 🔌 485 步进/伺服电机多通道控制与数据追踪系统
 
-A new Flutter project.
+本项目是一个基于 Flutter Windows 桌面端开发的工业级电机控制与测试监控终端。系统主要用于通过 RS485 串口总线对最高 **25路** 电机进行独立或同步控制，同时具备工况配置、实时电流监控、扫码单品追踪以及完备的本地数据持久化功能。
 
-## Getting Started
+---
 
-This project is a starting point for a Flutter application.
+## ✨ 核心特性
 
-A few resources to get you started if this is your first Flutter project:
+- **🚦 高并发多通道控制**
+  - 支持最高 25 路电机节点的独立状态管理。
+  - 支持的正反转控制、循环运行测试任务（如寿命测试）。
+  - 各通道卡片根据当前状态（空闲、正转、反转、驻留等待、报警停机）展示不同的醒目渐变标识。
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+- **🗃️ 扫码录入与产品追溯**
+  - 深度优化的扫码枪支持：扫码框获取焦点时自动清空上次录入的面单号，实现无缝连续扫码。
+  - 二维码（产品序列号）与电机实际运行过程深度绑定，为质检或寿命测试提供一对一追溯。
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+- **🛡️ 实时监测与过载报警**
+  - **实时电流显示**：界面直接呈现当前返回的适时电流（A）。
+  - **报警熔断机制**：当电流超限或其他异常发报错时，对应通道闪烁红灯并立即停机，需人工点击复位 (`Reset`) 解除。
+
+- **💾 本地数据持久化与高阶查询**
+  - 内置基于 `sqflite_common_ffi` 的原生 SQLite 数据库，将数据文件保存在 Windows 本地安全目录。
+  - **全周期日志**：自动记录日常运行电流遥测日志与触发阈值的报警日志。
+  - **融合查询视图**：在“历史页面”中，可通过扫描二维码/输入关键字，同时拉取该产品所有的正常运行数据与红字高亮的报警异常记录，帮助精准定位故障时刻。
+
+- **🎨 现代化沉浸式 UI 架构**
+  - 支持 Windows 原生桌面体验（自定义 App 图标与窗体标题）。
+  - 沉浸式顶部标题栏（AppBar）与侧边导航栏（NavigationRail），提升工业软件的视觉质感。
+
+---
+
+## 📖 详细使用说明
+
+### 1. 软件初始化与连接
+1. **启动软件**：打开应用后，会进入主仪表盘。
+2. **连接串口**：
+   - 找到顶部的**串口设置区域**。
+   - 选择正确的 **COM口** (对应您的 RS485 转 USB 模块)，设置对应的 **波特率**。
+   - 点击“连接”按钮启用水位总线通讯。
+
+### 2. 产品扫码防呆录入
+1. 使用 USB 扫码枪或鼠标，点击对应电机通道卡片的**二维码输入框**。
+2. 扫描产品二维码。系统会自动将该码值与该通道绑定（如 `CH-01` 绑定条码 `SN123456`）。
+3. **注意**：扫码框获得焦点后将*自动清空*屏幕残留字符。您无需手动删除，可以直接用扫码枪连续扫入新码。
+
+### 3. 工况分配与测试运行
+1. **下发配置**：为目标通道选择所需运行的“工况（Profile）”（包含正反转目标次数、目标周期时长等参数）。
+2. **启动电机**：
+   - 点击相应卡片右上角的 **▶️ 播放键 (绿色)** 启动单通道电机。
+   - 界面状态将从“空闲(灰色)”变为“正转(绿色)”或“反转(蓝色)”。
+   - “运行循环”数值会根据设备真实反馈实时递增：例如 `250 / 1000`。
+
+### 4. 异常报警与复位处理
+当通道出现卡死、过流报错等情况时：
+1. 通道背景变更为**🔴红色高亮**，状态显示“报警停机”。
+2. 系统已在后台数据库打满“报警快照日志”。
+3. 排除硬件故障后，必须点击卡片右上角的 **🔁 重置复位键 (橙色)**，才可将其恢复为灰色空闲状态以备下次运行。
+
+### 5. 报表与历史数据查询 (History)
+1. 在左侧的侧边栏菜单中，切换至 **📝 历史记录 (History)** 选项卡。
+2. 在顶部的搜索栏中，可以直接使用扫码枪扫入之前的**产品二维码**。
+3. 表格 (数据网格) 中将展示该码值关联的操作周期细节：
+   - 含有标准黑色字体的正常“遥测/运行日志”。
+   - 若测试期间产生过报警，**红色高亮的异常日志**会穿插在表格中（采用联合查询合并得出），方便技术人员回溯在第几个循环节点引发了异常。
+
+---
+
+## 🛠️ 针对开发者的编译与结构指引
+
+**环境依赖**
+- 框架：[Flutter SDK] (支持 Windows Native 构建)
+- 状态管理：`Provider` / `ChangeNotifier` (`MotorState`)
+- 本地存储：`sqflite_common_ffi`, `path_provider` (配置存储随 Windows 文档或 Local AppData 挂载)
+
+**项目结构参考**
+- `lib/core/database_helper.dart`：包含所有 SQLite 的建表语句 (`motor_run_history`, `current_logs`, `alarm_logs`) 以及核心查询模块（例如使用 `UNION ALL` 组装数据的关联查询逻辑）。
+- `lib/models/motor_state.dart`：存储状态逻辑、数据批量写入任务及串口总线的数据分发转换。
+- `lib/ui/dashboard_page.dart`：主控台界面。其中的 `_MotorCard` 实现了聚焦清零功能。
+- `lib/ui/history_page.dart`：多维度数据综合检索与 DataTable 渲染 UI。
+
+**构建与发布**
+```powershell
+flutter clean
+flutter pub get
+flutter build windows
+```
+*注：自定义产品图标 (.ico) 与进程名信息，已在 `windows/runner/Runner.rc` 与 `main.cpp` 中固化配置。*
