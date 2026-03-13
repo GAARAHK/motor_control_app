@@ -108,6 +108,8 @@ class SerialManager {
   }
 
   void closePorts() {
+    _isComABusy = false;
+    _isComBBusy = false;
     if (_comA?.isOpen == true) _comA?.close();
     if (_comB?.isOpen == true) _comB?.close();
     isConnected = false;
@@ -119,9 +121,15 @@ class SerialManager {
   Future<bool> sendMotorCommand(int motorAddress, String action) async {
     if (_comA == null || !_comA!.isOpen) return false;
     
-    // 互斥锁，防止高并发导致 485 冲突
+    // 互斥锁，防止高并发导致 485 冲突 (带超时保护防止死锁)
+    int lockWaitCount = 0;
     while (_isComABusy) {
+      if (lockWaitCount > 200) { // 等待锁超过2秒强行破除死锁
+        _isComABusy = false;
+        break;
+      }
       await Future.delayed(const Duration(milliseconds: 10));
+      lockWaitCount++;
     }
     _isComABusy = true;
 
@@ -182,8 +190,14 @@ return success;
   Future<double?> readCurrentChannel(int channel, {int deviceAddress = 1, double rangeMax = 60.0}) async {
     if (_comB == null || !_comB!.isOpen) return null;
 
+    int lockWaitCount = 0;
     while (_isComBBusy) {
+      if (lockWaitCount > 200) {
+        _isComBBusy = false;
+        break;
+      }
       await Future.delayed(const Duration(milliseconds: 10));
+      lockWaitCount++;
     }
     _isComBBusy = true;
 
@@ -241,9 +255,16 @@ return result;
     SerialPort? port = isComA ? _comA : _comB;
     if (port == null || !port.isOpen) return false;
 
-    // 获取对应的锁
+    // 获取对应的锁并带超时保护
+    int lockWaitCount = 0;
     while (isComA ? _isComABusy : _isComBBusy) {
+      if (lockWaitCount > 200) {
+        if (isComA) _isComABusy = false;
+        else _isComBBusy = false;
+        break;
+      }
       await Future.delayed(const Duration(milliseconds: 10));
+      lockWaitCount++;
     }
     
     if (isComA) {
