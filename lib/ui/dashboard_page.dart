@@ -68,7 +68,7 @@ class _DashboardPageState extends State<DashboardPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _buildHeader(),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 36), // 增加顶部操作区与卡片区域的距离，防止误触
                       Consumer<MotorState>(
                         builder: (context, motorState, child) {
                           return Column(
@@ -98,137 +98,206 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Widget _buildHeader() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            const Text(
-              '实时监控看板',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(width: 12),
-            Text(
-              '',
-              style: const TextStyle(color: Colors.grey),
-            ),
-          ],
-        ),
-        Row(
-          children: [
-            ElevatedButton.icon(
-              icon: Icon(
-                Icons.cable,
-                color: SerialManager().isConnected ? Colors.green : Colors.red,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8)
+                ),
+                child: const Icon(Icons.dashboard_customize, color: Colors.blue, size: 28),
               ),
-              label: const Text('串口配置'),
-              onPressed: _showSerialConfigDialog,
-            ),
-            const SizedBox(width: 8),
-            ElevatedButton.icon(
-              icon: const Icon(Icons.refresh),
-              label: const Text('刷新模板'),
-              onPressed: _loadTemplates,
-            ),
-            const SizedBox(width: 8),
-            ElevatedButton.icon(
-              icon: const Icon(Icons.play_arrow),
-              label: const Text('全部启动'),
-              onPressed: () {
-                context.read<MotorState>().startAll();
-              },
-            ),
-            const SizedBox(width: 8),
-            ElevatedButton.icon(
-              icon: const Icon(Icons.stop),
-              label: const Text('急停 (E-Stop)'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
+              const SizedBox(width: 12),
+              const Text(
+                '实时监控看板',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 1.2),
               ),
-              onPressed: () {
-                context.read<MotorState>().stopAll();
-              },
-            ),
-          ],
-        )
-      ],
+            ],
+          ),
+          Row(
+            children: [
+              ElevatedButton.icon(
+                icon: Icon(
+                  Icons.cable,
+                  color: SerialManager().isConnected ? Colors.green : Colors.red,
+                ),
+                label: const Text('串口配置'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.grey.shade100,
+                  foregroundColor: Colors.black87,
+                  elevation: 0,
+                ),
+                onPressed: _showSerialConfigDialog,
+              ),
+              const SizedBox(width: 12),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.refresh, size: 18),
+                label: const Text('刷新模板'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue.shade50,
+                  foregroundColor: Colors.blue.shade700,
+                  elevation: 0,
+                ),
+                onPressed: _loadTemplates,
+              ),
+              const SizedBox(width: 12),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.play_arrow),
+                label: const Text('全部启动', style: TextStyle(fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                  elevation: 2,
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                ),
+                onPressed: () {
+                  context.read<MotorState>().startAll();
+                },
+              ),
+              const SizedBox(width: 12),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.report_problem),
+                label: const Text('总急停 (E-Stop)', style: TextStyle(fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red.shade600,
+                  foregroundColor: Colors.white,
+                  elevation: 2,
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                ),
+                onPressed: () {
+                  context.read<MotorState>().stopAll();
+                },
+              ),
+            ],
+          )
+        ],
+      ),
     );
   }
   Widget _buildMotorRow(BuildContext context, MotorState motorState, int rowIndex) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 16.0),
+      padding: const EdgeInsets.only(bottom: 24.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                '第 ${rowIndex + 1} 组 (CH-${rowIndex * 5 + 1}~CH-${rowIndex * 5 + 5})',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-              Row(
-                children: [
-                  if (_templates.isNotEmpty) // 如果有模板则显示批量应用按钮
-                    PopupMenuButton<MotorConfigTemplate>(
-                      tooltip: '为本行所有电机统一设置工况',
-                      child: const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 8.0),
-                        child: Row(
-                          children: [
-                            Icon(Icons.rule_folder, size: 18, color: Colors.blue),
-                            SizedBox(width: 4),
-                            Text('配置本行工况', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
-                          ],
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade50,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.grey.shade200),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.group_work, color: Colors.blueGrey, size: 20),
+                    const SizedBox(width: 8),
+                    Text(
+                      '第 ${rowIndex + 1} 组总线 (CH-${rowIndex * 5 + 1} ~ CH-${rowIndex * 5 + 5})',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blueGrey.shade800),
+                    ),
+                  ],
+                ),
+                Row(
+                  children: [
+                    if (_templates.isNotEmpty) // 如果有模板则显示批量应用按钮
+                      PopupMenuButton<MotorConfigTemplate>(
+                        tooltip: '为本行所有电机统一设置工况',
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.shade50,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.rule_folder, size: 16, color: Colors.blue.shade700),
+                              const SizedBox(width: 6),
+                              Text('配置全组方案', style: TextStyle(color: Colors.blue.shade700, fontWeight: FontWeight.w600, fontSize: 13)),
+                            ],
+                          ),
                         ),
+                        itemBuilder: (context) {
+                          return _templates.map((tpl) => PopupMenuItem(
+                            value: tpl,
+                            child: Text('应用工况: ${tpl.name}'),
+                          )).toList();
+                        },
+                        onSelected: (tpl) {
+                          motorState.applyConfigToRow(rowIndex, tpl);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('✅ 已将工况 [${tpl.name}] 应用至第 ${rowIndex + 1} 组'),
+                              backgroundColor: Colors.green,
+                            )
+                          );
+                        },
+                      )
+                    else
+                      const Text('暂无工况可配', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                    const SizedBox(width: 16),
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.play_circle_outline, size: 18),
+                      label: const Text('启动组'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.green.shade700,
+                        side: BorderSide(color: Colors.green.shade200),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                       ),
-                      itemBuilder: (context) {
-                        return _templates.map((tpl) => PopupMenuItem(
-                          value: tpl,
-                          child: Text('应用: ${tpl.name}'),
-                        )).toList();
-                      },
-                      onSelected: (tpl) {
-                        motorState.applyConfigToRow(rowIndex, tpl);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('已将工况 [${tpl.name}] 应用至第 ${rowIndex + 1} 组'))
-                        );
-                      },
-                    )
-                  else
-                    const Text('暂无工况可配', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                  const SizedBox(width: 8),
-                  TextButton.icon(
-                    icon: const Icon(Icons.play_arrow),
-                    label: const Text('启动本行'),
-                    onPressed: () {
-                      for (int i = 0; i < 5; i++) {
-                        int idx = rowIndex * 5 + i;
-                        if (idx < motorState.motors.length) {
-                          motorState.startMotorSequence(idx);
+                      onPressed: () {
+                        for (int i = 0; i < 5; i++) {
+                          int idx = rowIndex * 5 + i;
+                          if (idx < motorState.motors.length) {
+                            motorState.startMotorSequence(idx);
+                          }
                         }
-                      }
-                    },
-                  ),
-                  TextButton.icon(
-                    icon: const Icon(Icons.stop),
-                    label: const Text('停止本行'),
-                    onPressed: () {
-                      for (int i = 0; i < 5; i++) {
-                         int idx = rowIndex * 5 + i;
-                         if (idx < motorState.motors.length) {
-                           motorState.stopMotorSequence(idx);
-                         }
-                      }
-                    },
-                  ),
-                ],
-              )
-            ],
+                      },
+                    ),
+                    const SizedBox(width: 8),
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.stop_circle_outlined, size: 18),
+                      label: const Text('停止组'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.red.shade700,
+                        side: BorderSide(color: Colors.red.shade200),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                      ),
+                      onPressed: () {
+                        for (int i = 0; i < 5; i++) {
+                           int idx = rowIndex * 5 + i;
+                           if (idx < motorState.motors.length) {
+                             motorState.stopMotorSequence(idx);
+                           }
+                        }
+                      },
+                    ),
+                  ],
+                )
+              ],
+            ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: List.generate(5, (colIndex) {
@@ -284,16 +353,27 @@ class _MotorCard extends StatelessWidget {
     }
 
     return Card(
-      elevation: 2,
+      elevation: 3,
+      shadowColor: Colors.black26,
       shape: RoundedRectangleBorder(
         side: BorderSide(
-          color: motor.isAlarm ? Colors.red : Colors.transparent,
-          width: 2,
+          color: motor.isAlarm ? Colors.red.shade400 : Colors.grey.shade200,
+          width: motor.isAlarm ? 2 : 1,
         ),
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(12),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(8.0),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          gradient: LinearGradient(
+            colors: motor.isAlarm 
+                ? [Colors.red.shade50, Colors.white]
+                : [Colors.white, Colors.blueGrey.shade50.withOpacity(0.3)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          )
+        ),
+        padding: const EdgeInsets.all(10.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -303,11 +383,18 @@ class _MotorCard extends StatelessWidget {
                 Expanded(
                   child: Row(
                     children: [
-                      Text(
-                        'CH-${motor.motorId.toString().padLeft(2, '0')}',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.blueGrey.shade800,
+                          borderRadius: BorderRadius.circular(4)
+                        ),
+                        child: Text(
+                          'CH-${motor.motorId.toString().padLeft(2, '0')}',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white, letterSpacing: 0.5),
+                        ),
                       ),
-                      const SizedBox(width: 2),
+                      const SizedBox(width: 6),
                       InkWell(
                         onTap: () {
                           if (motor.isAlarm) {
@@ -324,58 +411,69 @@ class _MotorCard extends StatelessWidget {
                               ? Icons.settings_backup_restore 
                               : (motor.isRunning ? Icons.stop_circle : Icons.play_circle_fill),
                           color: motor.isAlarm 
-                              ? Colors.orange 
-                              : (motor.isRunning ? Colors.red : Colors.green),
-                          size: 18,
+                              ? Colors.orange.shade700 
+                              : (motor.isRunning ? Colors.red.shade600 : Colors.green.shade600),
+                          size: 24,
                         ),
                       ),
                     ],
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                   decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(2),
+                    color: statusColor.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: statusColor.withOpacity(0.5))
                   ),
                   child: FittedBox(
                     fit: BoxFit.scaleDown,
                     child: Text(
                       statusStr,
-                      style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.bold),
+                      style: TextStyle(color: statusColor, fontSize: 11, fontWeight: FontWeight.w600),
                     ),
                   ),
                 ),
               ],
             ),
-            const Divider(height: 12),
+            const Divider(height: 16),
             Expanded(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  TextField(
-                    onChanged: (val) {
-                      context.read<MotorState>().bindQRCode(index, val);
-                    },
-                    decoration: InputDecoration(
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 4),
-                      labelText: '扫码接入口',
-                      hintText: motor.qrCode.isEmpty ? '待扫码..' : motor.qrCode,
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(6)
+                    ),
+                    child: TextField(
+                      onChanged: (val) {
+                        context.read<MotorState>().bindQRCode(index, val);
+                      },
+                      style: const TextStyle(fontSize: 13),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                        border: InputBorder.none,
+                        prefixIcon: Icon(Icons.qr_code, size: 16, color: Colors.grey.shade600),
+                        prefixIconConstraints: const BoxConstraints(minWidth: 30, minHeight: 0),
+                        hintText: motor.qrCode.isEmpty ? '待扫码..' : motor.qrCode,
+                        hintStyle: TextStyle(color: Colors.grey.shade500)
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 2),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('码值:', style: TextStyle(fontSize: 12)),
+                      Text('码值绑定:', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
                       Expanded(
                         child: Text(
                           motor.qrCode.isEmpty ? '未绑定' : motor.qrCode,
                           textAlign: TextAlign.right,
                           style: TextStyle(
                             fontSize: 12,
-                            color: motor.qrCode.isEmpty ? Colors.grey : Colors.blue,
+                            fontWeight: FontWeight.w500,
+                            color: motor.qrCode.isEmpty ? Colors.grey.shade400 : Colors.blue.shade700,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -385,43 +483,60 @@ class _MotorCard extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('工况:', style: TextStyle(fontSize: 12)),
+                      Text('当前工况:', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
                       Expanded(
                         child: Text(
-                          motor.appliedConfig?.name ?? 'No Config',
+                          motor.appliedConfig?.name ?? '未配置',
                           textAlign: TextAlign.right,
                           style: TextStyle(
                             fontSize: 12, 
-                            color: motor.appliedConfig == null ? Colors.red : Colors.black,
+                            fontWeight: FontWeight.bold,
+                            color: motor.appliedConfig == null ? Colors.red.shade300 : Colors.black87,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       )
                     ],
                   ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('电流:', style: TextStyle(fontSize: 12)),
-                      FittedBox(
-                        child: Text(
-                          '${motor.actualCurrent.toStringAsFixed(2)}A',
-                          style: TextStyle(
-                            color: (motor.isAlarm) ? Colors.red : Colors.green[800],
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: motor.isAlarm ? Colors.red.shade50 : (motor.actualCurrent > 0 ? Colors.green.shade50 : Colors.transparent),
+                      borderRadius: BorderRadius.circular(4)
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('适时电流:', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                        FittedBox(
+                          child: Text(
+                            '${motor.actualCurrent.toStringAsFixed(2)} A',
+                            style: TextStyle(
+                              color: (motor.isAlarm) ? Colors.red.shade600 : Colors.green.shade700,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w900,
+                              fontFamily: 'Courier',
+                            ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('循环:', style: TextStyle(fontSize: 12)),
-                      Text(
-                        '${motor.currentLoop}/${motor.targetLoops == 0 ? '-' : motor.targetLoops}',
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                      Text('运行循环:', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                      Row(
+                        children: [
+                          Text(
+                            '${motor.currentLoop}',
+                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.blue.shade700),
+                          ),
+                          Text(
+                            ' / ${motor.targetLoops == 0 ? '-' : motor.targetLoops}',
+                            style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                          ),
+                        ],
                       ),
                     ],
                   ),

@@ -35,7 +35,7 @@ class MotorControlApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: '20路电机群控系统',
+      title: '多路电机群控系统',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
@@ -65,7 +65,7 @@ class _MainNavigatorState extends State<MainNavigator> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('20路电机群控与数据采集系统'),
+        title: const Text('多路电机群控与数据采集系统'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
       ),
       body: Row(
