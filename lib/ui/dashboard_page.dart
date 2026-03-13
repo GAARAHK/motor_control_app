@@ -319,17 +319,43 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }}
 
-class _MotorCard extends StatelessWidget {
+class _MotorCard extends StatefulWidget {
   final SingleMotorState motor;
   final int index;
 
   const _MotorCard({required this.motor, required this.index});
 
   @override
+  State<_MotorCard> createState() => _MotorCardState();
+}
+
+class _MotorCardState extends State<_MotorCard> {
+  final TextEditingController _qrController = TextEditingController();
+  final FocusNode _qrFocusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    // 监听焦点变化，获取焦点时清空输入框，实现重新扫描录入
+    _qrFocusNode.addListener(() {
+      if (_qrFocusNode.hasFocus) {
+         _qrController.clear();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _qrController.dispose();
+    _qrFocusNode.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     Color statusColor;
     String statusStr;
-    switch (motor.status) {
+    switch (widget.motor.status) {
       case MotorStatus.idle:
         statusColor = Colors.grey;
         statusStr = '空闲/停止';
@@ -357,8 +383,8 @@ class _MotorCard extends StatelessWidget {
       shadowColor: Colors.black26,
       shape: RoundedRectangleBorder(
         side: BorderSide(
-          color: motor.isAlarm ? Colors.red.shade400 : Colors.grey.shade200,
-          width: motor.isAlarm ? 2 : 1,
+          color: widget.motor.isAlarm ? Colors.red.shade400 : Colors.grey.shade200,
+          width: widget.motor.isAlarm ? 2 : 1,
         ),
         borderRadius: BorderRadius.circular(12),
       ),
@@ -366,7 +392,7 @@ class _MotorCard extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
           gradient: LinearGradient(
-            colors: motor.isAlarm 
+            colors: widget.motor.isAlarm 
                 ? [Colors.red.shade50, Colors.white]
                 : [Colors.white, Colors.blueGrey.shade50.withOpacity(0.3)],
             begin: Alignment.topCenter,
@@ -390,29 +416,28 @@ class _MotorCard extends StatelessWidget {
                           borderRadius: BorderRadius.circular(4)
                         ),
                         child: Text(
-                          'CH-${motor.motorId.toString().padLeft(2, '0')}',
+                          'CH-${widget.motor.motorId.toString().padLeft(2, '0')}',
                           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white, letterSpacing: 0.5),
                         ),
                       ),
                       const SizedBox(width: 6),
                       InkWell(
                         onTap: () {
-                          if (motor.isAlarm) {
-                            // 报警状态下点击，执行复位操作
-                            context.read<MotorState>().resetAlarm(index);
-                          } else if (motor.isRunning) {
-                            context.read<MotorState>().stopMotorSequence(index);
+                          if (widget.motor.isAlarm) {
+                            context.read<MotorState>().resetAlarm(widget.index);
+                          } else if (widget.motor.isRunning) {
+                            context.read<MotorState>().stopMotorSequence(widget.index);
                           } else {
-                            context.read<MotorState>().startMotorSequence(index);
+                            context.read<MotorState>().startMotorSequence(widget.index);
                           }
                         },
                         child: Icon(
-                          motor.isAlarm 
+                          widget.motor.isAlarm 
                               ? Icons.settings_backup_restore 
-                              : (motor.isRunning ? Icons.stop_circle : Icons.play_circle_fill),
-                          color: motor.isAlarm 
+                              : (widget.motor.isRunning ? Icons.stop_circle : Icons.play_circle_fill),
+                          color: widget.motor.isAlarm 
                               ? Colors.orange.shade700 
-                              : (motor.isRunning ? Colors.red.shade600 : Colors.green.shade600),
+                              : (widget.motor.isRunning ? Colors.red.shade600 : Colors.green.shade600),
                           size: 24,
                         ),
                       ),
@@ -447,8 +472,10 @@ class _MotorCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(6)
                     ),
                     child: TextField(
+                      controller: _qrController,
+                      focusNode: _qrFocusNode,
                       onChanged: (val) {
-                        context.read<MotorState>().bindQRCode(index, val);
+                        context.read<MotorState>().bindQRCode(widget.index, val);
                       },
                       style: const TextStyle(fontSize: 13),
                       decoration: InputDecoration(
@@ -457,7 +484,7 @@ class _MotorCard extends StatelessWidget {
                         border: InputBorder.none,
                         prefixIcon: Icon(Icons.qr_code, size: 16, color: Colors.grey.shade600),
                         prefixIconConstraints: const BoxConstraints(minWidth: 30, minHeight: 0),
-                        hintText: motor.qrCode.isEmpty ? '待扫码..' : motor.qrCode,
+                        hintText: widget.motor.qrCode.isEmpty ? '待扫码..' : widget.motor.qrCode,
                         hintStyle: TextStyle(color: Colors.grey.shade500)
                       ),
                     ),
@@ -468,12 +495,12 @@ class _MotorCard extends StatelessWidget {
                       Text('码值绑定:', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
                       Expanded(
                         child: Text(
-                          motor.qrCode.isEmpty ? '未绑定' : motor.qrCode,
+                          widget.motor.qrCode.isEmpty ? '未绑定' : widget.motor.qrCode,
                           textAlign: TextAlign.right,
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w500,
-                            color: motor.qrCode.isEmpty ? Colors.grey.shade400 : Colors.blue.shade700,
+                            color: widget.motor.qrCode.isEmpty ? Colors.grey.shade400 : Colors.blue.shade700,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -486,12 +513,12 @@ class _MotorCard extends StatelessWidget {
                       Text('当前工况:', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
                       Expanded(
                         child: Text(
-                          motor.appliedConfig?.name ?? '未配置',
+                          widget.motor.appliedConfig?.name ?? '未配置',
                           textAlign: TextAlign.right,
                           style: TextStyle(
                             fontSize: 12, 
                             fontWeight: FontWeight.bold,
-                            color: motor.appliedConfig == null ? Colors.red.shade300 : Colors.black87,
+                            color: widget.motor.appliedConfig == null ? Colors.red.shade300 : Colors.black87,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -501,7 +528,7 @@ class _MotorCard extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
-                      color: motor.isAlarm ? Colors.red.shade50 : (motor.actualCurrent > 0 ? Colors.green.shade50 : Colors.transparent),
+                      color: widget.motor.isAlarm ? Colors.red.shade50 : (widget.motor.actualCurrent > 0 ? Colors.green.shade50 : Colors.transparent),
                       borderRadius: BorderRadius.circular(4)
                     ),
                     child: Row(
@@ -510,9 +537,9 @@ class _MotorCard extends StatelessWidget {
                         Text('适时电流:', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
                         FittedBox(
                           child: Text(
-                            '${motor.actualCurrent.toStringAsFixed(2)} A',
+                            '${widget.motor.actualCurrent.toStringAsFixed(2)} A',
                             style: TextStyle(
-                              color: (motor.isAlarm) ? Colors.red.shade600 : Colors.green.shade700,
+                              color: (widget.motor.isAlarm) ? Colors.red.shade600 : Colors.green.shade700,
                               fontSize: 16,
                               fontWeight: FontWeight.w900,
                               fontFamily: 'Courier',
@@ -529,11 +556,11 @@ class _MotorCard extends StatelessWidget {
                       Row(
                         children: [
                           Text(
-                            '${motor.currentLoop}',
+                            '${widget.motor.currentLoop}',
                             style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.blue.shade700),
                           ),
                           Text(
-                            ' / ${motor.targetLoops == 0 ? '-' : motor.targetLoops}',
+                            ' / ${widget.motor.targetLoops == 0 ? '-' : widget.motor.targetLoops}',
                             style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
                           ),
                         ],
