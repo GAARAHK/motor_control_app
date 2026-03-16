@@ -218,6 +218,97 @@ class DatabaseHelper {
     return await db.query('motor_run_history', orderBy: 'start_time DESC');
   }
 
+  // 7. 多条件高级查询：支持二维码、数据类型、日期范围、通道筛选
+  // logType: 'all' | 'normal' | 'alarm'
+  // dateFrom / dateTo: 'yyyy-MM-dd' 格式字符串，null 表示不限
+  // motorId: null 表示全部通道
+  Future<List<Map<String, dynamic>>> queryLogsAdvanced({
+    String? qrCode,
+    String logType = 'all',
+    String? dateFrom,
+    String? dateTo,
+    int? motorId,
+  }) async {
+    final db = await instance.database;
+
+    // 分别为正常记录表和报警记录表动态构建 WHERE 子句
+    final List<String> normalWhere = [];
+    final List<String> alarmWhere = [];
+    final List<dynamic> normalArgs = [];
+    final List<dynamic> alarmArgs = [];
+
+    if (qrCode != null && qrCode.isNotEmpty) {
+      normalWhere.add('qr_code = ?');
+      normalArgs.add(qrCode);
+      alarmWhere.add('qr_code = ?');
+      alarmArgs.add(qrCode);
+    }
+
+    if (motorId != null) {
+      normalWhere.add('motor_id = ?');
+      normalArgs.add(motorId);
+      alarmWhere.add('motor_id = ?');
+      alarmArgs.add(motorId);
+    }
+
+    if (dateFrom != null) {
+      normalWhere.add("timestamp >= ?");
+      normalArgs.add(dateFrom);
+      alarmWhere.add("timestamp >= ?");
+      alarmArgs.add(dateFrom);
+    }
+
+    if (dateTo != null) {
+      // 包含当天结束时间
+      normalWhere.add("timestamp <= ?");
+      normalArgs.add('${dateTo}T23:59:59');
+      alarmWhere.add("timestamp <= ?");
+      alarmArgs.add('${dateTo}T23:59:59');
+    }
+
+    final nw = normalWhere.isNotEmpty ? 'WHERE ${normalWhere.join(' AND ')}' : '';
+    final aw = alarmWhere.isNotEmpty ? 'WHERE ${alarmWhere.join(' AND ')}' : '';
+
+    String sql;
+    List<dynamic> args;
+
+    if (logType == 'normal') {
+      sql = '''
+        SELECT timestamp, batch_uuid, motor_id, loop_count, read_current, '正常记录' AS log_type
+        FROM current_logs $nw
+        ORDER BY timestamp ASC
+      ''';
+      args = normalArgs;
+    } else if (logType == 'alarm') {
+      sql = '''
+        SELECT timestamp, 'Alarm' AS batch_uuid, motor_id, -1 AS loop_count,
+               trip_current AS read_current,
+               '触发报警异常 (限值: ' || limit_value || ')' AS log_type
+        FROM alarm_logs $aw
+        ORDER BY timestamp ASC
+      ''';
+      args = alarmArgs;
+    } else {
+      // all: UNION ALL 合并
+      sql = '''
+        SELECT timestamp, batch_uuid, motor_id, loop_count, read_current, '正常记录' AS log_type
+        FROM current_logs $nw
+
+        UNION ALL
+
+        SELECT timestamp, 'Alarm' AS batch_uuid, motor_id, -1 AS loop_count,
+               trip_current AS read_current,
+               '触发报警异常 (限值: ' || limit_value || ')' AS log_type
+        FROM alarm_logs $aw
+
+        ORDER BY timestamp ASC
+      ''';
+      args = [...normalArgs, ...alarmArgs];
+    }
+
+    return await db.rawQuery(sql, args);
+  }
+
   // =============================================
 
   // 关闭数据库连接
