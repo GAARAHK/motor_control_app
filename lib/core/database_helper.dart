@@ -34,7 +34,7 @@ class DatabaseHelper {
     return await databaseFactory.openDatabase(
       dbPath,
       options: OpenDatabaseOptions(
-        version: 2, // 升级为支持动态动作队列的版本
+        version: 3, // v3: 新增查询索引优化
         onCreate: _createDB,
         onUpgrade: (db, oldVersion, newVersion) async {
           if (oldVersion < 2) {
@@ -50,6 +50,13 @@ class DatabaseHelper {
                 limit_lower REAL NOT NULL
               )
             ''');
+          }
+          if (oldVersion < 3) {
+            // 为已有数据库补充查询索引
+            await db.execute('CREATE INDEX IF NOT EXISTS idx_current_logs_qr ON current_logs(qr_code)');
+            await db.execute('CREATE INDEX IF NOT EXISTS idx_current_logs_batch ON current_logs(batch_uuid)');
+            await db.execute('CREATE INDEX IF NOT EXISTS idx_alarm_logs_qr ON alarm_logs(qr_code)');
+            await db.execute('CREATE INDEX IF NOT EXISTS idx_run_history_qr ON motor_run_history(qr_code)');
           }
         }
       ),
@@ -116,6 +123,12 @@ class DatabaseHelper {
         action_taken TEXT NOT NULL
       )
     ''');
+
+    // 6. 为高频查询字段创建索引，大幅提升 queryLogsByQRCode 在大数据量时的查询速度
+    await db.execute('CREATE INDEX idx_current_logs_qr ON current_logs(qr_code)');
+    await db.execute('CREATE INDEX idx_current_logs_batch ON current_logs(batch_uuid)');
+    await db.execute('CREATE INDEX idx_alarm_logs_qr ON alarm_logs(qr_code)');
+    await db.execute('CREATE INDEX idx_run_history_qr ON motor_run_history(qr_code)');
   }
 
   // ============== 工况模板表 CRUD ==============

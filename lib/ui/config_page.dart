@@ -29,9 +29,29 @@ class _ConfigPageState extends State<ConfigPage> {
     });
   }
 
-  Future<void> _deleteTemplate(int id) async {
-    await DatabaseHelper.instance.deleteTemplate(id);
-    _loadTemplates();
+  Future<void> _deleteTemplate(int id, String name) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('确认删除'),
+        content: Text('确定要删除工况模板「$name」吗？\n该操作无法撤销，正在运行中的通道将不再能从列表中找到此模板。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await DatabaseHelper.instance.deleteTemplate(id);
+      _loadTemplates();
+    }
   }
 
   void _showAddTemplateDialog() {
@@ -91,7 +111,7 @@ class _ConfigPageState extends State<ConfigPage> {
                               ),
                               trailing: IconButton(
                                 icon: const Icon(Icons.delete, color: Colors.grey),
-                                onPressed: () => _deleteTemplate(t.id!),
+                                onPressed: () => _deleteTemplate(t.id!, t.name),
                               ),
                             ),
                           );

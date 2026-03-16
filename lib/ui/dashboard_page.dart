@@ -336,12 +336,24 @@ class _MotorCardState extends State<_MotorCard> {
   @override
   void initState() {
     super.initState();
+    // 初始化时将已绑定的二维码同步到输入框
+    _qrController.text = widget.motor.qrCode;
     // 监听焦点变化，获取焦点时清空输入框，实现重新扫描录入
     _qrFocusNode.addListener(() {
       if (_qrFocusNode.hasFocus) {
          _qrController.clear();
       }
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant _MotorCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Provider rebuild 时同步最新 qrCode 到输入框
+    // 仅在未获焦点时更新，避免打断正在扫码输入的操作
+    if (!_qrFocusNode.hasFocus && widget.motor.qrCode != oldWidget.motor.qrCode) {
+      _qrController.text = widget.motor.qrCode;
+    }
   }
 
   @override

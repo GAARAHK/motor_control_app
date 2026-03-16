@@ -13,6 +13,7 @@ class _HistoryPageState extends State<HistoryPage> {
   final TextEditingController _searchController = TextEditingController();
   List<Map<String, dynamic>> _searchResults = [];
   bool _isLoading = false;
+  bool _hasSearched = false; // 区分"从未搜索"与"搜索结果为空"
 
   void _searchLogs() async {
     final keyword = _searchController.text.trim();
@@ -20,6 +21,7 @@ class _HistoryPageState extends State<HistoryPage> {
 
     setState(() {
       _isLoading = true;
+      _hasSearched = true;
     });
 
     try {
@@ -28,7 +30,7 @@ class _HistoryPageState extends State<HistoryPage> {
         _searchResults = results;
       });
     } catch (e) {
-      print('Query Error: $e');
+      debugPrint('Query Error: $e');
     } finally {
       setState(() {
         _isLoading = false;
@@ -87,9 +89,29 @@ class _HistoryPageState extends State<HistoryPage> {
             Expanded(
               child: _isLoading 
                 ? const Center(child: CircularProgressIndicator()) 
-                : _searchResults.isEmpty 
-                  ? const Center(
-                      child: Text('未找到该码值对应的数据', style: TextStyle(color: Colors.grey)),
+                : !_hasSearched
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.qr_code_scanner, size: 64, color: Colors.grey.shade300),
+                          const SizedBox(height: 16),
+                          Text('请扫描或输入产品二维码以查询历史数据', style: TextStyle(color: Colors.grey.shade500, fontSize: 15)),
+                        ],
+                      ),
+                    )
+                  : _searchResults.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.search_off, size: 64, color: Colors.grey.shade300),
+                          const SizedBox(height: 16),
+                          Text('未找到该码值对应的数据', style: TextStyle(color: Colors.grey.shade500, fontSize: 15)),
+                          const SizedBox(height: 8),
+                          Text('请确认二维码是否正确，或该产品尚未运行测试', style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
+                        ],
+                      ),
                     )
                   : Card(
                       elevation: 2,

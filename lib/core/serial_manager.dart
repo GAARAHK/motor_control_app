@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_libserialport/flutter_libserialport.dart';
 import '../utils/modbus_crc.dart';
 
@@ -68,7 +69,7 @@ class SerialManager {
         success = false;
       }
     } catch (e) {
-      print('Failed to open COM_A: $e');
+      debugPrint('[SerialManager][ERROR] Failed to open COM_A: $e');
       success = false;
     }
 
@@ -81,7 +82,7 @@ class SerialManager {
         success = false;
       }
     } catch (e) {
-      print('Failed to open COM_B: $e');
+      debugPrint('[SerialManager][ERROR] Failed to open COM_B: $e');
       success = false;
     }
 
@@ -169,11 +170,11 @@ class SerialManager {
       }
       
       if (!success) {
-        print('Serial stream timeout!');
+        debugPrint('[SerialManager][WARN] sendMotorCommand timeout: addr=$motorAddress action=$action');
       }
 return success;
     } catch (e) {
-      print('sendMotorCommand error: $e');
+      debugPrint('[SerialManager][ERROR] sendMotorCommand exception: $e');
       return false;
     } finally {
       // 延迟一小段时间，释放 485 总线资源
@@ -235,11 +236,11 @@ return success;
       }
       
       if (result == null) {
-         print('Serial stream timeout!');
+         debugPrint('[SerialManager][WARN] readCurrentChannel timeout: ch=$channel');
       }
 return result;
     } catch (e) {
-      print('readCurrent error: $e');
+      debugPrint('[SerialManager][ERROR] readCurrentChannel exception: $e');
       return null;
     } finally {
       await Future.delayed(const Duration(milliseconds: 10));
@@ -302,7 +303,7 @@ return result;
       }
       
       if (!success) {
-        print('Serial stream timeout!');
+        debugPrint('[SerialManager][WARN] sendConfigCommand timeout: addr=$deviceAddress reg=$regAddress');
       }
 return success;
     } catch (e) {

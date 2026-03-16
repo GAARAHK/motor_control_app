@@ -66,15 +66,15 @@ class MotorState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // 记录采集到的数据并判断报警逻辑
-  void updateMotorData(int index, double current, int loop, {bool checkAlarm = false, double upperLimit = 10.0, double lowerLimit = 0.5}) {
+  // 记录采集到的数据并判断报警逻辑（async：等待DB写入完成，防止退出时数据丢失）
+  Future<void> updateMotorData(int index, double current, int loop, {bool checkAlarm = false, double upperLimit = 10.0, double lowerLimit = 0.5}) async {
     final motor = _motors[index];
     motor.actualCurrent = current;
     motor.currentLoop = loop;
 
-    // 1. 电流数据落盘
+    // 1. 电流数据落盘（await 确保写入完成）
     if (motor.currentBatchUuid != null) {
-      DatabaseHelper.instance.insertCurrentLog({
+      await DatabaseHelper.instance.insertCurrentLog({
         'batch_uuid': motor.currentBatchUuid,
         'motor_id': motor.motorId,
         'qr_code': motor.qrCode,
@@ -90,7 +90,7 @@ class MotorState extends ChangeNotifier {
       motor.isRunning = false;
 
       // 2. 报警数据落盘
-      DatabaseHelper.instance.insertAlarmLog({
+      await DatabaseHelper.instance.insertAlarmLog({
         'timestamp': DateTime.now().toIso8601String(),
         'qr_code': motor.qrCode,
         'motor_id': motor.motorId,
@@ -100,7 +100,7 @@ class MotorState extends ChangeNotifier {
       });
 
       // 硬件侧急停
-      SerialManager().sendMotorCommand(motor.motorId, 'stop');
+      await SerialManager().sendMotorCommand(motor.motorId, 'stop');
     }
 
     notifyListeners();
@@ -123,8 +123,10 @@ class MotorState extends ChangeNotifier {
     if (index < 0 || index >= 25) return;
     final motor = _motors[index];
     motor.isRunning = false;
-    motor.isAlarm = false; // 停机操作也可附带清除报警
-    motor.status = MotorStatus.idle;
+    // 不清除报警标志：报警必须由操作员手动点击复位键确认，而不应被停机操作静默清除
+    if (!motor.isAlarm) {
+      motor.status = MotorStatus.idle;
+    }
 
     if (motor.currentBatchUuid != null) {
       DatabaseHelper.instance.updateRunHistoryStatus(motor.currentBatchUuid!, 'stopped');
@@ -196,16 +198,23 @@ class MotorState extends ChangeNotifier {
         for (var step in config.steps) {
           if (!motor.isRunning) break; // 中途被打断停止或报�?
 
-          // 1. 发送串口指令控制继电器动作
-          bool success = await SerialManager().sendMotorCommand(motor.motorId, step.action); 
+          // 1. 发送串口指令控制继电器动作（带3次重试，防止总线偶发抖动误触报警）
+          bool success = false;
+          for (int attempt = 0; attempt < 3; attempt++) {
+            success = await SerialManager().sendMotorCommand(motor.motorId, step.action);
+            if (success) break;
+            if (attempt < 2 && motor.isRunning) {
+              await Future.delayed(const Duration(milliseconds: 200));
+            }
+          }
 
           if (!success) {
-            // 【新增机制】如果驱动模块无响应或通信超时，触发报警并终止序列
-            motor.isAlarm = true;               // 切入报警锁死状态
-            motor.status = MotorStatus.alarm;   // 让 UI 显示红色的"报警停机"
-            motor.isRunning = false;            // 终止运行流水线
-            notifyListeners();                  // 立即通知改变卡片样式
-            break;                              // 跳出整个工况运转的解析循环
+            // 连续3次通信失败，确认设备故障，触发报警并终止序列
+            motor.isAlarm = true;
+            motor.status = MotorStatus.alarm;
+            motor.isRunning = false;
+            notifyListeners();
+            break;
           }
 
           if (step.action == 'fwd') {
@@ -229,7 +238,7 @@ class MotorState extends ChangeNotifier {
              // 触发采集
              double? currentVal = await SerialManager().readCurrentChannel(motor.motorId);
              if (currentVal != null) {
-               updateMotorData(index, currentVal, motor.currentLoop, 
+               await updateMotorData(index, currentVal, motor.currentLoop, 
                  checkAlarm: true, 
                  upperLimit: config.limitUpper,
                  lowerLimit: config.limitLower
@@ -250,9 +259,9 @@ class MotorState extends ChangeNotifier {
         }
       }
     } catch (e) {
-      print('运行状态机异常: $e');
+      debugPrint('[MotorState][ERROR] 运行状态机异常 motorId=${motor.motorId}: $e');
     } finally {
-      // 循环全部结束，或者中途被终止
+      // 循环全部结束，或者中途被终止（无论何种原因，保证状态干净归位）
       if (motor.currentBatchUuid != null) {
          String endStatus = 'stopped';
          if (motor.isAlarm) {
@@ -263,22 +272,26 @@ class MotorState extends ChangeNotifier {
          DatabaseHelper.instance.updateRunHistoryStatus(motor.currentBatchUuid!, endStatus);
       }
 
-      if (motor.isRunning) {
-        // 自然完成
-        motor.isRunning = false;
+      // 无论是自然完成、手动停止还是被打断，都必须确保 isRunning 归 false
+      // 同时只有非报警状态才把 status 归 idle，报警状态保留以供操作员识别
+      motor.isRunning = false;
+      if (motor.status != MotorStatus.alarm) {
         motor.status = MotorStatus.idle;
-        // 最后发一次纯停指令确保安�?
-        await SerialManager().sendMotorCommand(motor.motorId, 'stop');
-        notifyListeners();
       }
+      // 最后发一次纯停指令确保硬件侧停机
+      await SerialManager().sendMotorCommand(motor.motorId, 'stop');
+      notifyListeners();
     }
   }
 
-  /// 广播全部启动 (仅针对已绑定配置且未报警的闲置电�?
-  void startAll() {
+  /// 广播全部启动 (仅针对已绑定配置且未报警的闲置电机)
+  /// 分批错峰启动：每组5路之间间隔100ms，避免25路同时争抢串口锁导致UI阻塞
+  Future<void> startAll() async {
     for (int i = 0; i < 25; i++) {
        if (!_motors[i].isRunning && !_motors[i].isAlarm && _motors[i].appliedConfig != null) {
-          startMotorSequence(i);
+          startMotorSequence(i); // 不 await，允许并发运行
+          // 每启动一路后等待100ms，错峰串口总线压力
+          await Future.delayed(const Duration(milliseconds: 100));
        }
     }
   }
