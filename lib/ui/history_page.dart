@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../core/database_helper.dart';
 import '../core/export_service.dart';
 
@@ -17,12 +19,32 @@ class _HistoryPageState extends State<HistoryPage> {
   bool _isLoading = false;
   bool _hasSearched = false;
   bool _isExporting = false;
+  String? _lastExportDir; // 上次选择的导出目录，从 SharedPreferences 读取
+
+  static const _kExportDirKey = 'export_last_dir';
 
   // 高级筛选条件
   DateTime? _dateFrom;
   DateTime? _dateTo;
   String _logType = 'all'; // 'all' | 'normal' | 'alarm'
   int? _motorId; // null = 全部通道
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLastExportDir();
+  }
+
+  Future<void> _loadLastExportDir() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() => _lastExportDir = prefs.getString(_kExportDirKey));
+  }
+
+  Future<void> _saveLastExportDir(String dir) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kExportDirKey, dir);
+    _lastExportDir = dir;
+  }
 
   // ── 日期选择 ────────────────────────────────────────────────
   Future<void> _pickDate(bool isFrom) async {
@@ -83,12 +105,32 @@ class _HistoryPageState extends State<HistoryPage> {
   // ── 导出 ───────────────────────────────────────────────────
   Future<void> _exportResults() async {
     if (_searchResults.isEmpty) return;
+
+    // 生成默认文件名（以查询触发时刻命名）
+    final defaultFileName = ExportService.generateFileName();
+
+    // 弹出系统保存对话框，默认定位到上次目录
+    final savePath = await FilePicker.platform.saveFile(
+      dialogTitle: '选择导出位置',
+      fileName: defaultFileName,
+      initialDirectory: _lastExportDir,
+      allowedExtensions: ['xlsx'],
+      type: FileType.custom,
+      lockParentWindow: true,
+    );
+
+    // 用户取消则不导出
+    if (savePath == null) return;
+
+    // 记住本次选择的目录（下次作为默认）
+    final chosenDir = savePath.contains('\\') || savePath.contains('/')
+        ? savePath.substring(0, savePath.lastIndexOf(savePath.contains('\\') ? '\\' : '/'))
+        : null;
+    if (chosenDir != null) await _saveLastExportDir(chosenDir);
+
     setState(() => _isExporting = true);
     try {
-      final label = _searchController.text.trim().isEmpty
-          ? 'all'
-          : _searchController.text.trim();
-      final path = await ExportService.exportToExcel(_searchResults, label);
+      final path = await ExportService.exportToExcel(_searchResults, savePath);
       if (!mounted) return;
       if (path != null) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(

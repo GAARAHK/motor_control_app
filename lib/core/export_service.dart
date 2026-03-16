@@ -1,18 +1,17 @@
 import 'dart:io';
 import 'package:excel/excel.dart';
 import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
 
 // 历史数据转 Excel 导出服务
 class ExportService {
-  /// 将查询结果导出为 Excel 文件，返回保存路径；失败返回 null
+  /// 将查询结果写入指定路径的 Excel 文件，成功返回 savePath，失败返回 null。
+  /// [savePath] 由调用方通过文件选择对话框获取（含完整路径与文件名）
   static Future<String?> exportToExcel(
     List<Map<String, dynamic>> data,
-    String label,
+    String savePath,
   ) async {
     try {
       var excel = Excel.createExcel();
-      // 删除默认创建的 Sheet1，使用中文表名
       excel.rename('Sheet1', '数据记录');
       Sheet sheet = excel['数据记录'];
 
@@ -22,7 +21,7 @@ class ExportService {
       ];
       sheet.appendRow(headers.map((h) => TextCellValue(h)).toList());
 
-      // 表头加粗样式
+      // 表头蓝底白字加粗
       for (int col = 0; col < headers.length; col++) {
         final cell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: 0));
         cell.cellStyle = CellStyle(
@@ -51,7 +50,7 @@ class ExportService {
           DoubleCellValue(current),
         ]);
 
-        // 报警行标红背景
+        // 报警行标红
         if (isAlarm) {
           final rowIdx = sheet.maxRows - 1;
           for (int col = 0; col < headers.length; col++) {
@@ -65,30 +64,23 @@ class ExportService {
       }
 
       // 设置列宽
-      sheet.setColumnWidth(0, 22); // 时间
-      sheet.setColumnWidth(1, 30); // 类型
-      sheet.setColumnWidth(2, 28); // 批次ID
-      sheet.setColumnWidth(3, 12); // 通道
-      sheet.setColumnWidth(4, 14); // 循环
-      sheet.setColumnWidth(5, 14); // 电流
+      sheet.setColumnWidth(0, 22);
+      sheet.setColumnWidth(1, 30);
+      sheet.setColumnWidth(2, 28);
+      sheet.setColumnWidth(3, 12);
+      sheet.setColumnWidth(4, 14);
+      sheet.setColumnWidth(5, 14);
 
-      // === 文件保存 ===
-      final docDir = await getApplicationDocumentsDirectory();
-      final exportDir = Directory('${docDir.path}\\MotorControl\\exports');
-      if (!await exportDir.exists()) {
-        await exportDir.create(recursive: true);
-      }
-
-      final ts = DateTime.now().toIso8601String().replaceAll(':', '-').substring(0, 19);
-      // 文件名中的特殊字符替换，防止路径非法
-      final safeLabel = label.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
-      final fileName = '${safeLabel}_$ts.xlsx';
-      final filePath = '${exportDir.path}\\$fileName';
-
+      // === 写入文件 ===
       final fileBytes = excel.encode();
       if (fileBytes != null) {
-        File(filePath).writeAsBytesSync(fileBytes);
-        return filePath;
+        // 确保父目录存在
+        final parent = File(savePath).parent;
+        if (!await parent.exists()) {
+          await parent.create(recursive: true);
+        }
+        await File(savePath).writeAsBytes(fileBytes);
+        return savePath;
       }
       return null;
     } catch (e) {
@@ -96,4 +88,14 @@ class ExportService {
       return null;
     }
   }
+
+  /// 根据当前时间生成默认文件名，格式：查询记录_YYYYMMDD_HHmmss.xlsx
+  static String generateFileName() {
+    final now = DateTime.now();
+    final ts =
+        '${now.year}${_pad(now.month)}${_pad(now.day)}_${_pad(now.hour)}${_pad(now.minute)}${_pad(now.second)}';
+    return '查询记录_$ts.xlsx';
+  }
+
+  static String _pad(int n) => n.toString().padLeft(2, '0');
 }
