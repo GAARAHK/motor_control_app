@@ -310,6 +310,39 @@ class DatabaseHelper {
   }
 
   // =============================================
+  // 数据库管理 API
+  // =============================================
+
+  /// 返回各表的行数统计  Map key 为表名
+  Future<Map<String, int>> getTableStats() async {
+    final db = await instance.database;
+    final tables = [
+      'motor_run_history',
+      'current_logs',
+      'alarm_logs',
+      'work_mode_templates',
+    ];
+    final Map<String, int> stats = {};
+    for (final t in tables) {
+      final result = await db.rawQuery('SELECT COUNT(*) AS cnt FROM $t');
+      stats[t] = (result.first['cnt'] as int?) ?? 0;
+    }
+    return stats;
+  }
+
+  /// 清空指定表的全部记录，返回影响行数
+  Future<int> clearTable(String tableName) async {
+    final db = await instance.database;
+    return await db.delete(tableName);
+  }
+
+  /// 返回数据库文件的绝对路径
+  Future<String> getDatabaseFilePath() async {
+    final appDocDir = await getApplicationDocumentsDirectory();
+    return join(appDocDir.path, 'MotorControl', 'motor_control.db');
+  }
+
+  // =============================================
 
   // 关闭数据库连接
   Future close() async {

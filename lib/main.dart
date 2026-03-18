@@ -8,6 +8,7 @@ import 'models/motor_state.dart';
 import 'ui/dashboard_page.dart';
 import 'ui/config_page.dart';
 import 'ui/history_page.dart';
+import 'ui/db_manager_page.dart';
 
 void main() async {
   // 确保 Flutter Binding 初始化完成
@@ -80,11 +81,25 @@ class MainNavigator extends StatefulWidget {
 class _MainNavigatorState extends State<MainNavigator> {
   int _currentIndex = 0;
 
+  // DB 管理页密码（仅限本地访问控制，防止误操作）
+  static const _kDbPassword = 'hu123456789';
+
   final List<Widget> _pages = [
     const DashboardPage(),
     const ConfigPage(),
     const HistoryPage(),
+    const DbManagerPage(),
   ];
+
+  /// 弹出密码输入对话框，返回是否验证通过
+  Future<bool> _showPasswordDialog() async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => _PasswordDialog(password: _kDbPassword),
+    );
+    return result == true;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -158,10 +173,15 @@ class _MainNavigatorState extends State<MainNavigator> {
               ),
             ),
             selectedIndex: _currentIndex,
-            onDestinationSelected: (int index) {
-              setState(() {
-                _currentIndex = index;
-              });
+            onDestinationSelected: (int index) async {
+              if (index == 3) {
+                // 已在 DB 页，无需重复验证
+                if (_currentIndex == 3) return;
+                final ok = await _showPasswordDialog();
+                if (ok) setState(() => _currentIndex = 3);
+              } else {
+                setState(() => _currentIndex = index);
+              }
             },
             labelType: NavigationRailLabelType.all,
             destinations: const [
@@ -180,6 +200,11 @@ class _MainNavigatorState extends State<MainNavigator> {
                 selectedIcon: Icon(Icons.history),
                 label: Text('数据追溯'),
               ),
+              NavigationRailDestination(
+                icon: Icon(Icons.manage_search_outlined),
+                selectedIcon: Icon(Icons.manage_search),
+                label: Text('数据库管理'),
+              ),
             ],
           ),
           const VerticalDivider(thickness: 1, width: 1, color: Colors.black12),
@@ -191,6 +216,95 @@ class _MainNavigatorState extends State<MainNavigator> {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ── 独立对话框 Widget，确保 TextEditingController 由 State.dispose() 释放 ──
+
+class _PasswordDialog extends StatefulWidget {
+  final String password;
+  const _PasswordDialog({required this.password});
+
+  @override
+  State<_PasswordDialog> createState() => _PasswordDialogState();
+}
+
+class _PasswordDialogState extends State<_PasswordDialog> {
+  late final TextEditingController _controller;
+  bool _obscure = true;
+  String? _errorText;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    if (_controller.text == widget.password) {
+      Navigator.pop(context, true);
+    } else {
+      setState(() => _errorText = '密码错误，请重新输入');
+      _controller.clear();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Row(
+        children: [
+          Icon(Icons.lock_outline, color: Color(0xFF1565C0)),
+          SizedBox(width: 8),
+          Text('数据库管理 — 访问验证'),
+        ],
+      ),
+      content: SizedBox(
+        width: 320,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              '此页面涉及数据清理等高危操作，请输入管理密码以继续。',
+              style: TextStyle(fontSize: 13, color: Colors.grey),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _controller,
+              obscureText: _obscure,
+              autofocus: true,
+              decoration: InputDecoration(
+                labelText: '管理密码',
+                border: const OutlineInputBorder(),
+                errorText: _errorText,
+                prefixIcon: const Icon(Icons.password),
+                suffixIcon: IconButton(
+                  icon: Icon(_obscure ? Icons.visibility_off : Icons.visibility),
+                  onPressed: () => setState(() => _obscure = !_obscure),
+                ),
+              ),
+              onSubmitted: (_) => _submit(),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('取消'),
+        ),
+        ElevatedButton(
+          onPressed: _submit,
+          child: const Text('确认'),
+        ),
+      ],
     );
   }
 }
