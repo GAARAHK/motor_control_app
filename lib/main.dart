@@ -55,16 +55,8 @@ class MotorControlApp extends StatelessWidget {
       title: '多路电机群控系统',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF1565C0)),
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF3B82F6)),
         useMaterial3: true,
-        navigationRailTheme: NavigationRailThemeData(
-          backgroundColor: Colors.grey.shade50,
-          indicatorColor: Colors.blue.shade100,
-          selectedIconTheme: const IconThemeData(color: Color(0xFF1565C0)),
-          selectedLabelTextStyle: const TextStyle(color: Color(0xFF1565C0), fontWeight: FontWeight.bold),
-          unselectedIconTheme: IconThemeData(color: Colors.blueGrey.shade400),
-          unselectedLabelTextStyle: TextStyle(color: Colors.blueGrey.shade500),
-        ),
       ),
       home: const MainNavigator(),
     );
@@ -80,6 +72,7 @@ class MainNavigator extends StatefulWidget {
 
 class _MainNavigatorState extends State<MainNavigator> {
   int _currentIndex = 0;
+  int _prevIndex = 0; // 用于判断动画方向
 
   // DB 管理页密码（仅限本地访问控制，防止误操作）
   static const _kDbPassword = 'hu123456789';
@@ -105,12 +98,51 @@ class _MainNavigatorState extends State<MainNavigator> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        toolbarHeight: 48,
         title: DragToMoveArea(
-          child: const Row(
+          child: Row(
             children: [
-              Icon(Icons.precision_manufacturing, color: Colors.white, size: 24),
-              SizedBox(width: 12),
-              Text('多路电机群控与数据采集系统', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.2, color: Colors.white, fontSize: 18)),
+              Container(
+                width: 26,
+                height: 26,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF3B82F6), Color(0xFF6366F1)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(7),
+                ),
+                child: const Icon(Icons.developer_board_rounded, size: 14, color: Colors.white),
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                '多路电机群控与数据采集系统',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 1.0,
+                  color: Color(0xFFE2E8F0),
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0x253B82F6),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: const Color(0x553B82F6), width: 1),
+                ),
+                child: const Text(
+                  'RS-485',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: Color(0xFF93C5FD),
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -118,10 +150,9 @@ class _MainNavigatorState extends State<MainNavigator> {
         flexibleSpace: DragToMoveArea(
           child: Container(
             decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Color(0xFF0D47A1), Color(0xFF1976D2)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
+              color: Color(0xFF243042),
+              border: Border(
+                bottom: BorderSide(color: Color(0xFF374D65), width: 1),
               ),
             ),
           ),
@@ -151,67 +182,56 @@ class _MainNavigatorState extends State<MainNavigator> {
             ],
           )
         ],
-        elevation: 4,
-        shadowColor: Colors.black45,
+        elevation: 0,
+        shadowColor: Colors.transparent,
       ),
       body: Row(
         children: [
-          NavigationRail(
-            extended: false,
-            leading: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 20.0),
-              child: Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 6, offset: const Offset(0, 3))
-                  ],
-                ),
-                child: const Icon(Icons.hub, size: 32, color: Color(0xFF1565C0)),
-              ),
-            ),
+          _AnimatedNavRail(
             selectedIndex: _currentIndex,
-            onDestinationSelected: (int index) async {
+            onTap: (int index) async {
               if (index == 3) {
-                // 已在 DB 页，无需重复验证
                 if (_currentIndex == 3) return;
                 final ok = await _showPasswordDialog();
-                if (ok) setState(() => _currentIndex = 3);
+                if (ok) setState(() { _prevIndex = _currentIndex; _currentIndex = 3; });
               } else {
-                setState(() => _currentIndex = index);
+                setState(() { _prevIndex = _currentIndex; _currentIndex = index; });
               }
             },
-            labelType: NavigationRailLabelType.all,
-            destinations: const [
-              NavigationRailDestination(
-                icon: Icon(Icons.dashboard_outlined),
-                selectedIcon: Icon(Icons.dashboard),
-                label: Text('主控看板'),
-              ),
-              NavigationRailDestination(
-                icon: Icon(Icons.settings_outlined),
-                selectedIcon: Icon(Icons.settings),
-                label: Text('工况配置'),
-              ),
-              NavigationRailDestination(
-                icon: Icon(Icons.history_outlined),
-                selectedIcon: Icon(Icons.history),
-                label: Text('数据追溯'),
-              ),
-              NavigationRailDestination(
-                icon: Icon(Icons.manage_search_outlined),
-                selectedIcon: Icon(Icons.manage_search),
-                label: Text('数据库管理'),
-              ),
-            ],
           ),
-          const VerticalDivider(thickness: 1, width: 1, color: Colors.black12),
+          const VerticalDivider(thickness: 1, width: 1, color: Color(0xFFD8E0EA)),
           Expanded(
-            child: Container(
-              color: Colors.white,
-              child: _pages[_currentIndex],
+            child: ClipRect(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                transitionBuilder: (child, animation) {
+                  final isEntering = child.key == ValueKey(_currentIndex);
+                  final dir = _currentIndex >= _prevIndex ? 1.0 : -1.0;
+                  // 进入：快启慢停；退出：快速淡出
+                  final curved = CurvedAnimation(
+                    parent: animation,
+                    curve: const Cubic(0.05, 0.7, 0.1, 1.0),
+                    reverseCurve: const Cubic(0.3, 0, 0.8, 0.15),
+                  );
+                  return FadeTransition(
+                    opacity: curved,
+                    child: SlideTransition(
+                      position: Tween<Offset>(
+                        begin: isEntering
+                            ? Offset(0.05 * dir, 0)
+                            : Offset(-0.05 * dir, 0),
+                        end: Offset.zero,
+                      ).animate(curved),
+                      child: child,
+                    ),
+                  );
+                },
+                child: Container(
+                  key: ValueKey(_currentIndex),
+                  color: const Color(0xFFF4F6F9),
+                  child: _pages[_currentIndex],
+                ),
+              ),
             ),
           ),
         ],
@@ -305,6 +325,176 @@ class _PasswordDialogState extends State<_PasswordDialog> {
           child: const Text('确认'),
         ),
       ],
+    );
+  }
+}
+
+// ── 导航项数据 ────────────────────────────────────────────────────────────────
+
+class _NavItem {
+  final IconData outIcon;
+  final IconData selIcon;
+  final String label;
+  const _NavItem(this.outIcon, this.selIcon, this.label);
+}
+
+// ── 自定义侧边导航栏（带滑动选中指示器） ────────────────────────────────────
+
+class _AnimatedNavRail extends StatelessWidget {
+  final int selectedIndex;
+  final void Function(int) onTap;
+
+  static const _kBg     = Color(0xFF243042);
+  static const _kAccent = Color(0xFF60A5FA);
+  static const _kInact  = Color(0xFF7A8FA8);
+  static const double _kW     = 100;
+  static const double _kItemH = 84;
+
+  static const _items = [
+    _NavItem(Icons.grid_view_rounded,  Icons.grid_view_rounded,  '主控看板'),
+    _NavItem(Icons.tune_rounded,       Icons.tune_rounded,       '工况配置'),
+    _NavItem(Icons.bar_chart_rounded,  Icons.bar_chart_rounded,  '数据追溯'),
+    _NavItem(Icons.storage_rounded,    Icons.storage_rounded,    '数据库管理'),
+  ];
+
+  // ignore: prefer_const_constructors_in_immutables
+  _AnimatedNavRail({required this.selectedIndex, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: _kW,
+      color: _kBg,
+      child: Column(
+        children: [
+          // ── Logo 区 ──
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 18.0),
+            child: Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF1D4ED8), Color(0xFF6D28D9)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x601D4ED8),
+                    blurRadius: 14,
+                    offset: Offset(0, 5),
+                  ),
+                ],
+              ),
+              child: const Icon(Icons.developer_board_rounded, size: 26, color: Colors.white),
+            ),
+          ),
+          Container(
+            height: 1,
+            margin: const EdgeInsets.symmetric(horizontal: 14),
+            color: const Color(0xFF374D65),
+          ),
+          const SizedBox(height: 6),
+          // ── 导航项（带滑动指示器） ──
+          Expanded(
+            child: Stack(
+              children: [
+                // 毛玻璃色胶囊背景
+                AnimatedPositioned(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeInOutCubic,
+                  top: selectedIndex * _kItemH + 4,
+                  left: 8,
+                  right: 8,
+                  height: _kItemH - 8,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: const Color(0x2260A5FA),
+                      borderRadius: const BorderRadius.all(Radius.circular(12)),
+                      border: Border.all(color: const Color(0x3560A5FA), width: 1),
+                    ),
+                  ),
+                ),
+                // 左侧强调竖线
+                AnimatedPositioned(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeInOutCubic,
+                  top: selectedIndex * _kItemH + 20,
+                  left: 9,
+                  width: 3,
+                  height: _kItemH - 40,
+                  child: const DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: _kAccent,
+                      borderRadius: BorderRadius.all(Radius.circular(2)),
+                    ),
+                  ),
+                ),
+                // 导航项列表
+                Column(
+                  children: List.generate(_items.length, (i) {
+                    final sel = i == selectedIndex;
+                    return Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () => onTap(i),
+                        borderRadius: BorderRadius.circular(10),
+                        hoverColor: const Color(0x1060A5FA),
+                        splashColor: const Color(0x2060A5FA),
+                        child: SizedBox(
+                          width: _kW,
+                          height: _kItemH,
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              AnimatedContainer(
+                                duration: const Duration(milliseconds: 220),
+                                child: Icon(
+                                  _items[i].selIcon,
+                                  color: sel ? _kAccent : _kInact,
+                                  size: sel ? 26 : 24,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              AnimatedDefaultTextStyle(
+                                duration: const Duration(milliseconds: 220),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: sel ? _kAccent : _kInact,
+                                  fontWeight: sel ? FontWeight.w600 : FontWeight.w400,
+                                  letterSpacing: 0.3,
+                                ),
+                                child: Text(
+                                  _items[i].label,
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+              ],
+            ),
+          ),
+          // ── 底部版本号 ──
+          const Padding(
+            padding: EdgeInsets.only(bottom: 14),
+            child: Text(
+              'v 1.0',
+              style: TextStyle(
+                fontSize: 9,
+                color: Color.fromARGB(255, 186, 192, 219),
+                letterSpacing: 1.0,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
