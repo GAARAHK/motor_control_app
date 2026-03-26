@@ -386,7 +386,9 @@ class _MotorCardState extends State<_MotorCard> {
         break;
       case MotorStatus.alarm:
         statusColor = Colors.red;
-        statusStr = '报警停机';
+        statusStr = widget.motor.alarmReason.isNotEmpty
+            ? widget.motor.alarmReason
+            : '报警停机';
         break;
     }
 

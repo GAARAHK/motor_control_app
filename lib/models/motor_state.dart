@@ -15,6 +15,7 @@ class SingleMotorState {
   int targetLoops;          // 目标总循环次数
   double actualCurrent;     // 实时电流（最后一次采集的值）
   bool isAlarm;             // 是否处于报警停机状态
+  String alarmReason;        // 报警原因描述，显示在卡片上
   MotorConfigTemplate? appliedConfig; // 该电机绑定的当前工况
   bool isRunning = false;             // 内部控制打断标记
   String? currentBatchUuid;           // 追踪当前运行批次的唯一标识
@@ -27,6 +28,7 @@ class SingleMotorState {
     this.targetLoops = 0,
     this.actualCurrent = 0.0,
     this.isAlarm = false,
+    this.alarmReason = '',
     this.isRunning = false,
     this.appliedConfig,
     this.currentBatchUuid,
@@ -85,6 +87,7 @@ class MotorState extends ChangeNotifier {
     }
 
     if (checkAlarm && (current > upperLimit || current < lowerLimit)) {
+      motor.alarmReason = '电流越限（${current.toStringAsFixed(2)}A）';
       motor.isAlarm = true;
       motor.status = MotorStatus.alarm;
       motor.isRunning = false;
@@ -112,6 +115,7 @@ class MotorState extends ChangeNotifier {
   void resetAlarm(int index) {
     if (index >= 0 && index < 25) {
       _motors[index].isAlarm = false;
+      _motors[index].alarmReason = '';
       _motors[index].status = MotorStatus.idle;
       _motors[index].actualCurrent = 0.0; // 清空残留的越界电流显示
       notifyListeners();
@@ -198,18 +202,16 @@ class MotorState extends ChangeNotifier {
         for (var step in config.steps) {
           if (!motor.isRunning) break; // 中途被打断停止或报�?
 
-          // 1. 发送串口指令控制继电器动作（带3次重试，防止总线偶发抖动误触报警）
+          // 1. 发送串口指令控制继电器动作（带1次重试）
           bool success = false;
-          for (int attempt = 0; attempt < 3; attempt++) {
+          for (int attempt = 0; attempt < 2; attempt++) {
             success = await SerialManager().sendMotorCommand(motor.motorId, step.action);
             if (success) break;
-            if (attempt < 2 && motor.isRunning) {
-              await Future.delayed(const Duration(milliseconds: 200));
-            }
           }
 
           if (!success) {
-            // 连续3次通信失败，确认设备故障，触发报警并终止序列
+            // 连续2次通信失败，确认设备故障，触发报警并终止序列
+            motor.alarmReason = '电机模块通信失败';
             motor.isAlarm = true;
             motor.status = MotorStatus.alarm;
             motor.isRunning = false;
@@ -235,16 +237,29 @@ class MotorState extends ChangeNotifier {
              await Future.delayed(const Duration(seconds: 2));
              if (!motor.isRunning) break; 
              
-             // 触发采集
+             // 触发采集（1次重试）
              double? currentVal = await SerialManager().readCurrentChannel(motor.motorId);
+             if (currentVal == null) {
+               // 重试一次
+               currentVal = await SerialManager().readCurrentChannel(motor.motorId);
+             }
              if (currentVal != null) {
-               await updateMotorData(index, currentVal, motor.currentLoop, 
-                 checkAlarm: true, 
+               await updateMotorData(index, currentVal, motor.currentLoop,
+                 checkAlarm: true,
                  upperLimit: config.limitUpper,
                  lowerLimit: config.limitLower
                );
-               // 若触发了报错（updateMotorData里会�?isRunning 设为 false�?
                if (!motor.isRunning) break;
+             } else {
+               // 重试后仍失败，触发报警状态并停机（需手动复位）
+               debugPrint('[MotorState][WARN] Motor ${motor.motorId}: 电流读取失败，停止当前循环');
+               motor.alarmReason = '电流采集失败';
+               motor.isAlarm = true;
+               motor.status = MotorStatus.alarm;
+               motor.isRunning = false;
+               await SerialManager().sendMotorCommand(motor.motorId, 'stop');
+               notifyListeners();
+               break;
              }
 
              // 剩下的时间继续等�?

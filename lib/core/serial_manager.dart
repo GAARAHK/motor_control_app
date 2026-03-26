@@ -125,7 +125,7 @@ class SerialManager {
     // 互斥锁，防止高并发导致 485 冲突 (带超时保护防止死锁)
     int lockWaitCount = 0;
     while (_isComABusy) {
-      if (lockWaitCount > 200) { // 等待锁超过2秒强行破除死锁
+      if (lockWaitCount > 100) { // 等待锁超过1秒强行破除死锁
         _isComABusy = false;
         break;
       }
@@ -156,7 +156,7 @@ class SerialManager {
       int waitCount = 0;
       List<int> buffer = [];
       
-      while (waitCount < 50) { // 最多等 50 x 10ms = 500ms
+      while (waitCount < 10) { // 最多等 10 x 10ms = 100ms
         Uint8List chunk = _comA!.read(128, timeout: 10);
         if (chunk.isNotEmpty) {
            buffer.addAll(chunk);
@@ -193,7 +193,7 @@ return success;
 
     int lockWaitCount = 0;
     while (_isComBBusy) {
-      if (lockWaitCount > 200) {
+      if (lockWaitCount > 100) {
         _isComBBusy = false;
         break;
       }
@@ -218,7 +218,7 @@ return success;
       List<int> buffer = [];
       int waitCount = 0;
       
-      while (waitCount < 50) { // 500ms max
+      while (waitCount < 10) { // 100ms max
         Uint8List chunk = _comB!.read(128, timeout: 10);
         if (chunk.isNotEmpty) {
            buffer.addAll(chunk);
@@ -259,7 +259,7 @@ return result;
     // 获取对应的锁并带超时保护
     int lockWaitCount = 0;
     while (isComA ? _isComABusy : _isComBBusy) {
-      if (lockWaitCount > 200) {
+      if (lockWaitCount > 100) {
         if (isComA) _isComABusy = false;
         else _isComBBusy = false;
         break;
@@ -289,7 +289,7 @@ return result;
       int waitCount = 0;
       List<int> buffer = [];
       
-      while (waitCount < 50) { 
+      while (waitCount < 25) { 
         Uint8List chunk = port.read(128, timeout: 10);
         if (chunk.isNotEmpty) {
            buffer.addAll(chunk);
