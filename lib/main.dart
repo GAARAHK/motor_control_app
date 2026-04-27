@@ -1,14 +1,18 @@
 ﻿import 'package:flutter/material.dart';
+import 'dart:io';
 import 'package:provider/provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'core/database_helper.dart';
 import 'models/motor_state.dart';
+import 'models/ui_settings.dart';
 import 'ui/dashboard_page.dart';
 import 'ui/config_page.dart';
 import 'ui/history_page.dart';
 import 'ui/db_manager_page.dart';
+import 'ui/settings_page.dart';
+import 'ui/light_control_page.dart';
 
 void main() async {
   // 确保 Flutter Binding 初始化完成
@@ -40,6 +44,7 @@ void main() async {
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => MotorState()),
+        ChangeNotifierProvider(create: (_) => UiSettings()..loadFromPrefs()),
       ],
       child: const MotorControlApp(),
     ),
@@ -70,18 +75,75 @@ class MainNavigator extends StatefulWidget {
   State<MainNavigator> createState() => _MainNavigatorState();
 }
 
-class _MainNavigatorState extends State<MainNavigator> {
+class _MainNavigatorState extends State<MainNavigator> with WindowListener {
   int _currentIndex = 0;
   int _prevIndex = 0; // 用于判断动画方向
 
   // DB 管理页密码（仅限本地访问控制，防止误操作）
-  static const _kDbPassword = 'hu123456789';
+  static const _kDbPassword = '1234567890';
+
+  @override
+  void initState() {
+    super.initState();
+    windowManager.addListener(this);
+    windowManager.setPreventClose(true);
+  }
+
+  @override
+  void dispose() {
+    windowManager.removeListener(this);
+    super.dispose();
+  }
+
+  @override
+  void onWindowClose() async {
+    final shouldClose = await _showExitDialog();
+    if (shouldClose) {
+      await windowManager.setPreventClose(false);
+      await windowManager.close();
+    }
+  }
+
+  /// 退出确认对话框
+  Future<bool> _showExitDialog() async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.power_settings_new, color: Colors.red),
+            SizedBox(width: 8),
+            Text('确认退出'),
+          ],
+        ),
+        content: const Text('确定要退出程序吗？当前正在运行的电机将被停止。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('退出程序'),
+          ),
+        ],
+      ),
+    );
+    return result == true;
+  }
 
   final List<Widget> _pages = [
     const DashboardPage(),
     const ConfigPage(),
     const HistoryPage(),
     const DbManagerPage(),
+    const LightControlPage(),
+    const SettingsPage(),
   ];
 
   /// 弹出密码输入对话框，返回是否验证通过
@@ -96,6 +158,8 @@ class _MainNavigatorState extends State<MainNavigator> {
 
   @override
   Widget build(BuildContext context) {
+    final ui = context.watch<UiSettings>();
+
     return Scaffold(
       appBar: AppBar(
         toolbarHeight: 48,
@@ -106,14 +170,18 @@ class _MainNavigatorState extends State<MainNavigator> {
                 width: 26,
                 height: 26,
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF3B82F6), Color(0xFF6366F1)],
+                  gradient: LinearGradient(
+                    colors: [ui.selectedColor, ui.selectedColor.withValues(alpha: 0.72)],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
                   borderRadius: BorderRadius.circular(7),
                 ),
-                child: const Icon(Icons.developer_board_rounded, size: 14, color: Colors.white),
+                child: _AppLogoWidget(
+                  localPath: ui.appIconLocalPath,
+                  icon: ui.appIcon,
+                  size: 14,
+                ),
               ),
               const SizedBox(width: 10),
               const Text(
@@ -129,15 +197,15 @@ class _MainNavigatorState extends State<MainNavigator> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: const Color(0x253B82F6),
+                  color: ui.selectedColor.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: const Color(0x553B82F6), width: 1),
+                  border: Border.all(color: ui.selectedColor.withValues(alpha: 0.35), width: 1),
                 ),
-                child: const Text(
+                child: Text(
                   'RS-485',
                   style: TextStyle(
                     fontSize: 10,
-                    color: Color(0xFF93C5FD),
+                    color: ui.selectedColor.withValues(alpha: 0.95),
                     fontWeight: FontWeight.w500,
                     letterSpacing: 0.5,
                   ),
@@ -149,10 +217,10 @@ class _MainNavigatorState extends State<MainNavigator> {
         titleSpacing: 16,
         flexibleSpace: DragToMoveArea(
           child: Container(
-            decoration: const BoxDecoration(
-              color: Color(0xFF243042),
+            decoration: BoxDecoration(
+              color: ui.topBarColor,
               border: Border(
-                bottom: BorderSide(color: Color(0xFF374D65), width: 1),
+                bottom: BorderSide(color: ui.topBarBorderColor, width: 1),
               ),
             ),
           ),
@@ -177,7 +245,13 @@ class _MainNavigatorState extends State<MainNavigator> {
               ),
               WindowCaptionButton.close(
                 brightness: Brightness.dark,
-                onPressed: () async => await windowManager.close(),
+                onPressed: () async {
+                  final shouldClose = await _showExitDialog();
+                  if (shouldClose) {
+                    await windowManager.setPreventClose(false);
+                    await windowManager.close();
+                  }
+                },
               ),
             ],
           )
@@ -189,6 +263,13 @@ class _MainNavigatorState extends State<MainNavigator> {
         children: [
           _AnimatedNavRail(
             selectedIndex: _currentIndex,
+            sideBarColor: ui.sideBarColor,
+            sideBarDividerColor: ui.sideBarDividerColor,
+            selectedColor: ui.selectedColor,
+            selectedBgColor: ui.selectedBgColor,
+            inactiveColor: ui.inactiveColor,
+            appIcon: ui.appIcon,
+            appIconLocalPath: ui.appIconLocalPath,
             onTap: (int index) async {
               if (index == 3) {
                 if (_currentIndex == 3) return;
@@ -199,7 +280,7 @@ class _MainNavigatorState extends State<MainNavigator> {
               }
             },
           ),
-          const VerticalDivider(thickness: 1, width: 1, color: Color(0xFFD8E0EA)),
+          VerticalDivider(thickness: 1, width: 1, color: ui.sideBarDividerColor.withValues(alpha: 0.5)),
           Expanded(
             child: ClipRect(
               child: AnimatedSwitcher(
@@ -228,7 +309,7 @@ class _MainNavigatorState extends State<MainNavigator> {
                 },
                 child: Container(
                   key: ValueKey(_currentIndex),
-                  color: const Color(0xFFF4F6F9),
+                  color: ui.pageBgColor,
                   child: _pages[_currentIndex],
                 ),
               ),
@@ -343,10 +424,14 @@ class _NavItem {
 class _AnimatedNavRail extends StatelessWidget {
   final int selectedIndex;
   final void Function(int) onTap;
+  final Color sideBarColor;
+  final Color sideBarDividerColor;
+  final Color selectedColor;
+  final Color selectedBgColor;
+  final Color inactiveColor;
+  final IconData appIcon;
+  final String? appIconLocalPath;
 
-  static const _kBg     = Color(0xFF243042);
-  static const _kAccent = Color(0xFF60A5FA);
-  static const _kInact  = Color(0xFF7A8FA8);
   static const double _kW     = 100;
   static const double _kItemH = 84;
 
@@ -355,16 +440,28 @@ class _AnimatedNavRail extends StatelessWidget {
     _NavItem(Icons.tune_rounded,       Icons.tune_rounded,       '工况配置'),
     _NavItem(Icons.bar_chart_rounded,  Icons.bar_chart_rounded,  '数据追溯'),
     _NavItem(Icons.storage_rounded,    Icons.storage_rounded,    '数据库管理'),
+    _NavItem(Icons.lightbulb_rounded,  Icons.lightbulb_rounded,  '灯光控制'),
+    _NavItem(Icons.palette_rounded,    Icons.palette_rounded,    '设置'),
   ];
 
   // ignore: prefer_const_constructors_in_immutables
-  _AnimatedNavRail({required this.selectedIndex, required this.onTap});
+  _AnimatedNavRail({
+    required this.selectedIndex,
+    required this.onTap,
+    required this.sideBarColor,
+    required this.sideBarDividerColor,
+    required this.selectedColor,
+    required this.selectedBgColor,
+    required this.inactiveColor,
+    required this.appIcon,
+    required this.appIconLocalPath,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
       width: _kW,
-      color: _kBg,
+      color: sideBarColor,
       child: Column(
         children: [
           // ── Logo 区 ──
@@ -388,13 +485,17 @@ class _AnimatedNavRail extends StatelessWidget {
                   ),
                 ],
               ),
-              child: const Icon(Icons.developer_board_rounded, size: 26, color: Colors.white),
+              child: _AppLogoWidget(
+                localPath: appIconLocalPath,
+                icon: appIcon,
+                size: 26,
+              ),
             ),
           ),
           Container(
             height: 1,
             margin: const EdgeInsets.symmetric(horizontal: 14),
-            color: const Color(0xFF374D65),
+            color: sideBarDividerColor,
           ),
           const SizedBox(height: 6),
           // ── 导航项（带滑动指示器） ──
@@ -411,9 +512,9 @@ class _AnimatedNavRail extends StatelessWidget {
                   height: _kItemH - 8,
                   child: DecoratedBox(
                     decoration: BoxDecoration(
-                      color: const Color(0x2260A5FA),
+                      color: selectedBgColor,
                       borderRadius: const BorderRadius.all(Radius.circular(12)),
-                      border: Border.all(color: const Color(0x3560A5FA), width: 1),
+                      border: Border.all(color: selectedColor.withValues(alpha: 0.35), width: 1),
                     ),
                   ),
                 ),
@@ -425,9 +526,9 @@ class _AnimatedNavRail extends StatelessWidget {
                   left: 9,
                   width: 3,
                   height: _kItemH - 40,
-                  child: const DecoratedBox(
+                  child: DecoratedBox(
                     decoration: BoxDecoration(
-                      color: _kAccent,
+                      color: selectedColor,
                       borderRadius: BorderRadius.all(Radius.circular(2)),
                     ),
                   ),
@@ -453,7 +554,7 @@ class _AnimatedNavRail extends StatelessWidget {
                                 duration: const Duration(milliseconds: 220),
                                 child: Icon(
                                   _items[i].selIcon,
-                                  color: sel ? _kAccent : _kInact,
+                                  color: sel ? selectedColor : inactiveColor,
                                   size: sel ? 26 : 24,
                                 ),
                               ),
@@ -462,7 +563,7 @@ class _AnimatedNavRail extends StatelessWidget {
                                 duration: const Duration(milliseconds: 220),
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: sel ? _kAccent : _kInact,
+                                  color: sel ? selectedColor : inactiveColor,
                                   fontWeight: sel ? FontWeight.w600 : FontWeight.w400,
                                   letterSpacing: 0.3,
                                 ),
@@ -496,5 +597,37 @@ class _AnimatedNavRail extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _AppLogoWidget extends StatelessWidget {
+  final String? localPath;
+  final IconData icon;
+  final double size;
+
+  const _AppLogoWidget({
+    required this.localPath,
+    required this.icon,
+    required this.size,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (localPath != null && localPath!.isNotEmpty) {
+      final file = File(localPath!);
+      if (file.existsSync()) {
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(5),
+          child: Image.file(
+            file,
+            fit: BoxFit.cover,
+            width: size + 10,
+            height: size + 10,
+            errorBuilder: (_, __, ___) => Icon(icon, size: size, color: Colors.white),
+          ),
+        );
+      }
+    }
+    return Icon(icon, size: size, color: Colors.white);
   }
 }

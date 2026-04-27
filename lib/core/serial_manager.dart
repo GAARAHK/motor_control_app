@@ -13,9 +13,11 @@ class SerialManager {
   /// 维护端口实例对象
   SerialPort? _comA; // 电机控制
   SerialPort? _comB; // 电流采集
+  SerialPort? _comC; // 灯控控制（7路）
 
   String? portAName;
   String? portBName;
+  String? portCName;
   bool isConnected = false;
 
   int _baudRateA = 19200;
@@ -28,15 +30,71 @@ class SerialManager {
   int _stopBitsB = 1;
   int _parityB = SerialPortParity.none;
 
+  int _baudRateC = 19200;
+  int _dataBitsC = 8;
+  int _stopBitsC = 1;
+  int _parityC = SerialPortParity.none;
+
   // 使用 Completer 进行异步等待回调机制
   bool _isComABusy = false;
   bool _isComBBusy = false;
+  bool _isComCBusy = false;
+
+  void _drainRx(SerialPort port) {
+    // 清空历史残留数据，避免上一帧残片影响本次CRC判断。
+    // 注意：某些串口驱动在 timeout=0 时会阻塞，需使用极短超时并限制总时长。
+    final sw = Stopwatch()..start();
+    for (int i = 0; i < 16; i++) {
+      if (sw.elapsedMilliseconds > 20) break;
+      Uint8List chunk;
+      try {
+        chunk = port.read(256, timeout: 1);
+      } catch (_) {
+        break;
+      }
+      if (chunk.isEmpty) break;
+    }
+  }
+
+  bool _hasValidFixedFrame(
+    List<int> buffer,
+    int address,
+    int function,
+    int frameLen,
+  ) {
+    if (buffer.length < frameLen) return false;
+    for (int i = 0; i <= buffer.length - frameLen; i++) {
+      if (buffer[i] != address || buffer[i + 1] != function) continue;
+      final frame = Uint8List.fromList(buffer.sublist(i, i + frameLen));
+      if (ModbusCrc.verifyCRC16(frame)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Uint8List? _extractFixedFrame(
+    List<int> buffer,
+    int address,
+    int function,
+    int frameLen,
+  ) {
+    if (buffer.length < frameLen) return null;
+    for (int i = 0; i <= buffer.length - frameLen; i++) {
+      if (buffer[i] != address || buffer[i + 1] != function) continue;
+      final frame = Uint8List.fromList(buffer.sublist(i, i + frameLen));
+      if (ModbusCrc.verifyCRC16(frame)) {
+        return frame;
+      }
+    }
+    return null;
+  }
 
   /// 获取系统当前可用串口列表
   List<String> get availablePorts => SerialPort.availablePorts;
 
-  /// 配置参数并尝试打开两路串口
-  Future<bool> initPorts(String portAName, String portBName, {
+  /// 配置参数并尝试打开串口；portCName 为 null 时跳过灯控总线，不影响 isConnected
+  Future<bool> initPorts(String portAName, String portBName, String? portCName, {
     int baudRateA = 19200, 
     int dataBitsA = 8, 
     int stopBitsA = 1, 
@@ -44,10 +102,15 @@ class SerialManager {
     int baudRateB = 19200, 
     int dataBitsB = 8, 
     int stopBitsB = 1, 
-    int parityB = SerialPortParity.none
+    int parityB = SerialPortParity.none,
+    int baudRateC = 19200,
+    int dataBitsC = 8,
+    int stopBitsC = 1,
+    int parityC = SerialPortParity.none,
   }) async {
     this.portAName = portAName;
     this.portBName = portBName;
+    this.portCName = portCName;
     _baudRateA = baudRateA;
     _dataBitsA = dataBitsA;
     _stopBitsA = stopBitsA;
@@ -57,6 +120,11 @@ class SerialManager {
     _dataBitsB = dataBitsB;
     _stopBitsB = stopBitsB;
     _parityB = parityB;
+
+    _baudRateC = baudRateC;
+    _dataBitsC = dataBitsC;
+    _stopBitsC = stopBitsC;
+    _parityC = parityC;
     
     bool success = true;
 
@@ -86,6 +154,27 @@ class SerialManager {
       success = false;
     }
 
+    // COM_C 灯控为可选总线，打开失败不影响主连接状态
+    if (portCName != null && portCName.isNotEmpty) {
+      try {
+        if (_comC != null && _comC!.isOpen) _comC!.close();
+        _comC = SerialPort(portCName);
+        if (_comC!.openReadWrite()) {
+          _comC!.config = _getSpConfigC();
+        } else {
+          debugPrint('[SerialManager][WARN] COM_C open failed, light control disabled');
+          _comC = null;
+        }
+      } catch (e) {
+        debugPrint('[SerialManager][ERROR] Failed to open COM_C: $e');
+        _comC = null;
+      }
+    } else {
+      // 未配置 COM_C，关闭旧连接
+      if (_comC?.isOpen == true) _comC?.close();
+      _comC = null;
+    }
+
     isConnected = success;
     return success;
   }
@@ -108,11 +197,22 @@ class SerialManager {
     return conf;
   }
 
+  SerialPortConfig _getSpConfigC() {
+    final conf = SerialPortConfig();
+    conf.baudRate = _baudRateC;
+    conf.bits = _dataBitsC;
+    conf.parity = _parityC;
+    conf.stopBits = _stopBitsC;
+    return conf;
+  }
+
   void closePorts() {
     _isComABusy = false;
     _isComBBusy = false;
+    _isComCBusy = false;
     if (_comA?.isOpen == true) _comA?.close();
     if (_comB?.isOpen == true) _comB?.close();
+    if (_comC?.isOpen == true) _comC?.close();
     isConnected = false;
   }
 
@@ -149,6 +249,7 @@ class SerialManager {
       ]);
       
       Uint8List frame = ModbusCrc.appendCRC16(data);
+      _drainRx(_comA!);
       
       _comA!.write(frame);
       
@@ -160,7 +261,7 @@ class SerialManager {
         Uint8List chunk = _comA!.read(128, timeout: 10);
         if (chunk.isNotEmpty) {
            buffer.addAll(chunk);
-           if (ModbusCrc.verifyCRC16(Uint8List.fromList(buffer))) {
+          if (_hasValidFixedFrame(buffer, motorAddress, 0x06, 8)) {
               success = true;
               break;
            }
@@ -180,6 +281,66 @@ return success;
       // 延迟一小段时间，释放 485 总线资源
       await Future.delayed(const Duration(milliseconds: 10));
       _isComABusy = false;
+    }
+  }
+
+  // ============== COM_C: 7路灯控模块 ==============
+
+  /// 灯控指令：on(映射fwd=0x01) / off(映射stop=0x00)
+  Future<bool> sendLightCommand(int lightAddress, bool on) async {
+    if (_comC == null || !_comC!.isOpen) return false;
+
+    int lockWaitCount = 0;
+    while (_isComCBusy) {
+      if (lockWaitCount > 100) {
+        _isComCBusy = false;
+        break;
+      }
+      await Future.delayed(const Duration(milliseconds: 10));
+      lockWaitCount++;
+    }
+    _isComCBusy = true;
+
+    try {
+      final int value = on ? 0x01 : 0x00;
+      final data = Uint8List.fromList([
+        lightAddress,
+        0x06,
+        0x00, 0x00,
+        0x00, value,
+      ]);
+
+      final frame = ModbusCrc.appendCRC16(data);
+      _drainRx(_comC!);
+      _comC!.write(frame);
+
+      bool success = false;
+      int waitCount = 0;
+      final List<int> buffer = [];
+
+      while (waitCount < 10) {
+        final chunk = _comC!.read(128, timeout: 10);
+        if (chunk.isNotEmpty) {
+          buffer.addAll(chunk);
+          if (_hasValidFixedFrame(buffer, lightAddress, 0x06, 8)) {
+            success = true;
+            break;
+          }
+        }
+        await Future.delayed(const Duration(milliseconds: 10));
+        waitCount++;
+      }
+
+      if (!success) {
+        debugPrint('[SerialManager][WARN] sendLightCommand timeout: addr=$lightAddress on=$on');
+      }
+      return success;
+    } catch (e) {
+      debugPrint('[SerialManager][ERROR] sendLightCommand exception: $e');
+      return false;
+    } finally {
+      await Future.delayed(const Duration(milliseconds: 10));
+      _isComCBusy = false;
     }
   }
 
@@ -212,6 +373,7 @@ return success;
       ]);
       
       Uint8List frame = ModbusCrc.appendCRC16(data);
+      _drainRx(_comB!);
       _comB!.write(frame);
       
       double? result;
@@ -222,12 +384,10 @@ return success;
         Uint8List chunk = _comB!.read(128, timeout: 10);
         if (chunk.isNotEmpty) {
            buffer.addAll(chunk);
-           if (buffer.length >= 7) {
-             Uint8List fullFrame = Uint8List.fromList(buffer);
-             if (ModbusCrc.verifyCRC16(fullFrame)) {
-                int value = (fullFrame[3] << 8) | fullFrame[4];
-                result = (value * rangeMax) / 10000.0;
-             }
+           final fullFrame = _extractFixedFrame(buffer, deviceAddress, 0x03, 7);
+           if (fullFrame != null && fullFrame.length >= 5) {
+             final int value = (fullFrame[3] << 8) | fullFrame[4];
+             result = (value * rangeMax) / 10000.0;
              break;
            }
         }
@@ -251,28 +411,30 @@ return result;
   // ============== 通用配置命令 ==============
 
   /// 向指派的总线设备发送通用修改指令 (功能码 0x06，写单个寄存器)
-  /// isComA: true为电机总线，false为采集器总线
-  Future<bool> sendConfigCommand(bool isComA, int deviceAddress, int regAddress, int value) async {
-    SerialPort? port = isComA ? _comA : _comB;
+  /// bus: 'A'=电机总线, 'B'=采集器总线, 'C'=灯控总线
+  Future<bool> sendConfigCommand(String bus, int deviceAddress, int regAddress, int value) async {
+    SerialPort? port;
+    if (bus == 'A') port = _comA;
+    else if (bus == 'B') port = _comB;
+    else if (bus == 'C') port = _comC;
     if (port == null || !port.isOpen) return false;
 
     // 获取对应的锁并带超时保护
     int lockWaitCount = 0;
-    while (isComA ? _isComABusy : _isComBBusy) {
+    while ((bus == 'A' ? _isComABusy : bus == 'B' ? _isComBBusy : _isComCBusy)) {
       if (lockWaitCount > 100) {
-        if (isComA) _isComABusy = false;
-        else _isComBBusy = false;
+        if (bus == 'A') _isComABusy = false;
+        else if (bus == 'B') _isComBBusy = false;
+        else _isComCBusy = false;
         break;
       }
       await Future.delayed(const Duration(milliseconds: 10));
       lockWaitCount++;
     }
     
-    if (isComA) {
-      _isComABusy = true;
-    } else {
-      _isComBBusy = true;
-    }
+    if (bus == 'A') _isComABusy = true;
+    else if (bus == 'B') _isComBBusy = true;
+    else _isComCBusy = true;
 
     try {
       Uint8List data = Uint8List.fromList([
@@ -283,6 +445,7 @@ return result;
       ]);
       
       Uint8List frame = ModbusCrc.appendCRC16(data);
+      _drainRx(port);
       port.write(frame);
       
       bool success = false;
@@ -293,7 +456,7 @@ return result;
         Uint8List chunk = port.read(128, timeout: 10);
         if (chunk.isNotEmpty) {
            buffer.addAll(chunk);
-           if (ModbusCrc.verifyCRC16(Uint8List.fromList(buffer))) {
+          if (_hasValidFixedFrame(buffer, deviceAddress, 0x06, 8)) {
               success = true;
               break;
            }
@@ -305,12 +468,14 @@ return result;
       if (!success) {
         debugPrint('[SerialManager][WARN] sendConfigCommand timeout: addr=$deviceAddress reg=$regAddress');
       }
-return success;
+      return success;
     } catch (e) {
       return false;
     } finally {
       await Future.delayed(const Duration(milliseconds: 10));
-      if (isComA) _isComABusy = false; else _isComBBusy = false;
+      if (bus == 'A') _isComABusy = false;
+      else if (bus == 'B') _isComBBusy = false;
+      else _isComCBusy = false;
     }
   }
 }

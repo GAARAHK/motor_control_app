@@ -18,6 +18,8 @@ class SingleMotorState {
   String alarmReason;        // 报警原因描述，显示在卡片上
   MotorConfigTemplate? appliedConfig; // 该电机绑定的当前工况
   bool isRunning = false;             // 内部控制打断标记
+  bool stopCommandSent = false;       // 本轮是否已下发过停机指令（避免重复发送）
+  int runToken = 0;                   // 运行代际标识，防止旧协程干扰新循环
   String? currentBatchUuid;           // 追踪当前运行批次的唯一标识
 
   SingleMotorState({
@@ -30,6 +32,8 @@ class SingleMotorState {
     this.isAlarm = false,
     this.alarmReason = '',
     this.isRunning = false,
+    this.stopCommandSent = false,
+    this.runToken = 0,
     this.appliedConfig,
     this.currentBatchUuid,
   });
@@ -42,7 +46,13 @@ class MotorState extends ChangeNotifier {
     (index) => SingleMotorState(motorId: index + 1)
   );
 
+  // COM_C 灯控：7路（地址1~7）
+  final List<bool> _lampStates = List<bool>.filled(7, false);
+  bool _isTrafficSyncing = false;
+  bool _pendingTrafficSync = false;
+
   List<SingleMotorState> get motors => _motors;
+  List<bool> get lampStates => List<bool>.unmodifiable(_lampStates);
 
   // 扫码绑定
   void bindQRCode(int index, String qr) {
@@ -50,6 +60,45 @@ class MotorState extends ChangeNotifier {
       _motors[index].qrCode = qr;
       notifyListeners();
     }
+  }
+
+  Future<void> setLampState(int lampId, bool isOn) async {
+    if (lampId < 1 || lampId > 7) return;
+    final idx = lampId - 1;
+    if (_lampStates[idx] == isOn) return;
+
+    _lampStates[idx] = isOn;
+    notifyListeners();
+
+    if (!SerialManager().isConnected) return;
+    await SerialManager().sendLightCommand(lampId, isOn);
+  }
+
+  Future<void> toggleLamp(int lampId) async {
+    if (lampId < 1 || lampId > 7) return;
+    await setLampState(lampId, !_lampStates[lampId - 1]);
+  }
+
+  Future<void> _syncTrafficLights() async {
+    if (_isTrafficSyncing) {
+      _pendingTrafficSync = true;
+      return;
+    }
+    _isTrafficSyncing = true;
+
+    do {
+      _pendingTrafficSync = false;
+      final bool anyAlarm = _motors.any((m) => m.isAlarm);
+      final bool anyRunning = _motors.any((m) => m.isRunning);
+
+      // 1红 2黄 3绿 4蜂鸣器（与红灯同步）
+      await setLampState(1, anyAlarm);
+      await setLampState(2, !anyAlarm && !anyRunning);
+      await setLampState(3, !anyAlarm && anyRunning);
+      await setLampState(4, anyAlarm); // 蜂鸣器，报警时响
+    } while (_pendingTrafficSync);
+
+    _isTrafficSyncing = false;
   }
 
   // 给指定行(5个为一�?的电机应用相同的工况参数
@@ -103,10 +152,12 @@ class MotorState extends ChangeNotifier {
       });
 
       // 硬件侧急停
+      motor.stopCommandSent = true;
       await SerialManager().sendMotorCommand(motor.motorId, 'stop');
     }
 
     notifyListeners();
+    _syncTrafficLights();
   }
 
   // ====================== 核心业务�?======================
@@ -119,6 +170,7 @@ class MotorState extends ChangeNotifier {
       _motors[index].status = MotorStatus.idle;
       _motors[index].actualCurrent = 0.0; // 清空残留的越界电流显示
       notifyListeners();
+      _syncTrafficLights();
     }
   }
 
@@ -126,6 +178,13 @@ class MotorState extends ChangeNotifier {
   Future<void> stopMotorSequence(int index) async {
     if (index < 0 || index >= 25) return;
     final motor = _motors[index];
+
+    // 非运行态不下发 stop，避免无效命令占用总线并引发超时
+    if (!motor.isRunning) return;
+
+    // 切换运行代际：让旧循环协程在下一次检查时自动失效退出
+    motor.runToken++;
+
     motor.isRunning = false;
     // 不清除报警标志：报警必须由操作员手动点击复位键确认，而不应被停机操作静默清除
     if (!motor.isAlarm) {
@@ -137,6 +196,8 @@ class MotorState extends ChangeNotifier {
     }
 
     notifyListeners(); // 提前刷新UI，避免被底层的串口锁阻塞界面响应
+    _syncTrafficLights();
+    motor.stopCommandSent = true;
     await SerialManager().sendMotorCommand(motor.motorId, 'stop');
   }
 
@@ -170,6 +231,8 @@ class MotorState extends ChangeNotifier {
     
     motor.isRunning = true;
     motor.isAlarm = false;
+    motor.stopCommandSent = false;
+    final int myRunToken = ++motor.runToken;
     // 【修改点】：不再强制清零，保留断点续跑能力。只有原本设定的次数已经全部跑满了，再次点击启动才会从头来。
     if (motor.currentLoop >= motor.targetLoops) {
       motor.currentLoop = 0;
@@ -178,9 +241,10 @@ class MotorState extends ChangeNotifier {
     final config = motor.appliedConfig!;
     
     // 生成新的批次UUID并落盘
-    motor.currentBatchUuid = '${DateTime.now().millisecondsSinceEpoch}_M${motor.motorId}';
+     final String runBatchUuid = '${DateTime.now().millisecondsSinceEpoch}_M${motor.motorId}';
+     motor.currentBatchUuid = runBatchUuid;
     DatabaseHelper.instance.insertRunHistory({
-       'batch_uuid': motor.currentBatchUuid,
+       'batch_uuid': runBatchUuid,
        'motor_id': motor.motorId,
        'qr_code': motor.qrCode,
        'template_id': config.id ?? 0, 
@@ -189,9 +253,12 @@ class MotorState extends ChangeNotifier {
     });
 
     notifyListeners();
-    
+    _syncTrafficLights();
+
+    bool stopSent = false;
     try {
       while (motor.isRunning && motor.currentLoop < config.targetLoops) {
+        if (motor.runToken != myRunToken) break;
         motor.currentLoop++;
         notifyListeners();
 
@@ -200,7 +267,16 @@ class MotorState extends ChangeNotifier {
         bool hasCollectedThisLoop = false;
 
         for (var step in config.steps) {
+          if (motor.runToken != myRunToken) break;
           if (!motor.isRunning) break; // 中途被打断停止或报�?
+
+          // 每个步骤发命令前按通道号做微错峰，降低同一时刻总线竞争峰值
+          final int stepSkewMs = ((motor.motorId - 1) % 5) * 12; // 0/12/24/36/48ms
+          if (stepSkewMs > 0) {
+            await Future.delayed(Duration(milliseconds: stepSkewMs));
+            if (motor.runToken != myRunToken) break;
+            if (!motor.isRunning) break;
+          }
 
           // 1. 发送串口指令控制继电器动作（带1次重试）
           bool success = false;
@@ -216,6 +292,7 @@ class MotorState extends ChangeNotifier {
             motor.status = MotorStatus.alarm;
             motor.isRunning = false;
             notifyListeners();
+            _syncTrafficLights();
             break;
           }
 
@@ -235,6 +312,7 @@ class MotorState extends ChangeNotifier {
              
              // 拆分等待：先�?秒（避开浪涌�?
              await Future.delayed(const Duration(seconds: 2));
+             if (motor.runToken != myRunToken) break;
              if (!motor.isRunning) break; 
              
              // 触发采集（1次重试）
@@ -243,12 +321,17 @@ class MotorState extends ChangeNotifier {
                // 重试一次
                currentVal = await SerialManager().readCurrentChannel(motor.motorId);
              }
+             if (motor.runToken != myRunToken) break;
              if (currentVal != null) {
                await updateMotorData(index, currentVal, motor.currentLoop,
                  checkAlarm: true,
                  upperLimit: config.limitUpper,
                  lowerLimit: config.limitLower
                );
+               // 越限停机在 updateMotorData 中已经下发 stop，标记避免 finally 重复发送
+               if (motor.isAlarm && !motor.isRunning) {
+                 stopSent = true;
+               }
                if (!motor.isRunning) break;
              } else {
                // 重试后仍失败，触发报警状态并停机（需手动复位）
@@ -257,8 +340,11 @@ class MotorState extends ChangeNotifier {
                motor.isAlarm = true;
                motor.status = MotorStatus.alarm;
                motor.isRunning = false;
+               motor.stopCommandSent = true;
                await SerialManager().sendMotorCommand(motor.motorId, 'stop');
+               stopSent = true;
                notifyListeners();
+               _syncTrafficLights();
                break;
              }
 
@@ -276,15 +362,20 @@ class MotorState extends ChangeNotifier {
     } catch (e) {
       debugPrint('[MotorState][ERROR] 运行状态机异常 motorId=${motor.motorId}: $e');
     } finally {
+      // 旧代际协程退出时不允许改动当前状态，避免干扰新循环
+      if (motor.runToken != myRunToken) {
+        return;
+      }
+
       // 循环全部结束，或者中途被终止（无论何种原因，保证状态干净归位）
-      if (motor.currentBatchUuid != null) {
+      if (runBatchUuid.isNotEmpty) {
          String endStatus = 'stopped';
          if (motor.isAlarm) {
            endStatus = 'alarm';
          } else if (motor.currentLoop >= config.targetLoops) {
            endStatus = 'completed';
          }
-         DatabaseHelper.instance.updateRunHistoryStatus(motor.currentBatchUuid!, endStatus);
+         DatabaseHelper.instance.updateRunHistoryStatus(runBatchUuid, endStatus);
       }
 
       // 无论是自然完成、手动停止还是被打断，都必须确保 isRunning 归 false
@@ -294,8 +385,11 @@ class MotorState extends ChangeNotifier {
         motor.status = MotorStatus.idle;
       }
       // 最后发一次纯停指令确保硬件侧停机
-      await SerialManager().sendMotorCommand(motor.motorId, 'stop');
+      if (!stopSent && !motor.stopCommandSent) {
+        await SerialManager().sendMotorCommand(motor.motorId, 'stop');
+      }
       notifyListeners();
+      _syncTrafficLights();
     }
   }
 
@@ -314,8 +408,8 @@ class MotorState extends ChangeNotifier {
   /// 广播全部停止
   void stopAll() {
     for (int i = 0; i < 25; i++) {
-        // 优化：只有实际在运行的电机才去发送结束指令，避免下发多余的25次串口指令阻塞整条总线
-        if (_motors[i].isRunning || _motors[i].status != MotorStatus.idle) {
+        // 仅停止正在运行的通道，避免对空闲/未运行通道发送无效 stop
+        if (_motors[i].isRunning) {
           stopMotorSequence(i);
         }
     }

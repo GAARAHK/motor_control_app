@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_libserialport/flutter_libserialport.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../core/serial_manager.dart';
 
 class SerialConfigDialog extends StatefulWidget {
@@ -10,12 +11,19 @@ class SerialConfigDialog extends StatefulWidget {
 }
 
 class _SerialConfigDialogState extends State<SerialConfigDialog> {
+  static const _kBaudRateAKey = 'serial_last_baud_rate_a';
+  static const _kBaudRateBKey = 'serial_last_baud_rate_b';
+  static const _kBaudRateCKey = 'serial_last_baud_rate_c';
+
   String? selectedComA;
   String? selectedComB;
+  String? selectedComC;
   int _baudRateA = 19200;
   int _parityA = SerialPortParity.none;
   int _baudRateB = 19200;
   int _parityB = SerialPortParity.none;
+  int _baudRateC = 19200;
+  int _parityC = SerialPortParity.none;
   final int _dataBits = 8;
   final int _stopBits = 1;
 
@@ -33,9 +41,40 @@ class _SerialConfigDialogState extends State<SerialConfigDialog> {
     super.initState();
     selectedComA = SerialManager().portAName;
     selectedComB = SerialManager().portBName;
+    selectedComC = SerialManager().portCName;
     List<String> ports = SerialManager().availablePorts;
     if (selectedComA != null && !ports.contains(selectedComA)) selectedComA = null;
     if (selectedComB != null && !ports.contains(selectedComB)) selectedComB = null;
+    if (selectedComC != null && !ports.contains(selectedComC)) selectedComC = null;
+    _loadLastBaudRates();
+  }
+
+  Future<void> _loadLastBaudRates() async {
+    final prefs = await SharedPreferences.getInstance();
+    final int? savedA = prefs.getInt(_kBaudRateAKey);
+    final int? savedB = prefs.getInt(_kBaudRateBKey);
+    final int? savedC = prefs.getInt(_kBaudRateCKey);
+    final Set<int> validRates = _baudOptions.map(int.parse).toSet();
+
+    if (!mounted) return;
+    setState(() {
+      if (savedA != null && validRates.contains(savedA)) {
+        _baudRateA = savedA;
+      }
+      if (savedB != null && validRates.contains(savedB)) {
+        _baudRateB = savedB;
+      }
+      if (savedC != null && validRates.contains(savedC)) {
+        _baudRateC = savedC;
+      }
+    });
+  }
+
+  Future<void> _saveLastBaudRates() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kBaudRateAKey, _baudRateA);
+    await prefs.setInt(_kBaudRateBKey, _baudRateB);
+    await prefs.setInt(_kBaudRateCKey, _baudRateC);
   }
 
   @override
@@ -47,12 +86,13 @@ class _SerialConfigDialogState extends State<SerialConfigDialog> {
 
   Future<void> _handleConnect() async {
     if (selectedComA == null || selectedComB == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请先选择两个串口')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请先选择 COM_A 和 COM_B 串口')));
       return;
     }
     bool success = await SerialManager().initPorts(
       selectedComA!,
       selectedComB!,
+      selectedComC, // 可为 null，表示不启用灯控总线
       baudRateA: _baudRateA,
       dataBitsA: _dataBits,
       stopBitsA: _stopBits,
@@ -61,7 +101,14 @@ class _SerialConfigDialogState extends State<SerialConfigDialog> {
       dataBitsB: _dataBits,
       stopBitsB: _stopBits,
       parityB: _parityB,
+      baudRateC: _baudRateC,
+      dataBitsC: _dataBits,
+      stopBitsC: _stopBits,
+      parityC: _parityC,
     );
+    if (success) {
+      await _saveLastBaudRates();
+    }
     setState(() {}); // 刷新转态
     if (!mounted) return;
     if (success) {
@@ -80,20 +127,24 @@ class _SerialConfigDialogState extends State<SerialConfigDialog> {
 
   Future<void> _handleSendConfig() async {
     bool isComA = _targetBus == 'COM_A';
+    bool isComC = _targetBus == 'COM_C';
     int address = int.tryParse(_deviceAddressCtrl.text) ?? 1;
     int value = int.tryParse(_actionValueCtrl.text) ?? 0;
     int reg = 0;
 
     switch (_actionType) {
-      case 'collector_address': reg = 0x0050; break; // 修改采集器地址
-      case 'collector_baud': reg = 0x0051; break; // 修改采集器波特率 (0=4800,1=9600,2=19200...)
-      case 'collector_parity': reg = 0x0052; break; // 修改采集器校验 (0=无,1=奇,2=偶)
-      case 'motor_address': reg = 0x0032; break; // 修改单路电机控制器地址
-      case 'motor_baud': reg = 0x0033; break; // 修改单路电机波特率 (0=4800,1=9600,3=19200...)
-      case 'motor_mode': reg = 0x0097; break; // 设置电机工作模式 (M1=1, M34=34(0x22))
+      case 'collector_address': reg = 0x0050; break;
+      case 'collector_baud': reg = 0x0051; break;
+      case 'collector_parity': reg = 0x0052; break;
+      case 'motor_address': reg = 0x0032; break;
+      case 'motor_baud': reg = 0x0033; break;
+      case 'motor_mode': reg = 0x0097; break;
+      case 'light_address': reg = 0x0032; break;
+      case 'light_baud': reg = 0x0033; break;
     }
 
-    bool res = await SerialManager().sendConfigCommand(isComA, address, reg, value);
+    final String bus = isComA ? 'A' : isComC ? 'C' : 'B';
+    bool res = await SerialManager().sendConfigCommand(bus, address, reg, value);
     if (!mounted) return;
     if (res) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('指令发送并验证成功！')));
@@ -216,6 +267,53 @@ class _SerialConfigDialogState extends State<SerialConfigDialog> {
                         ),
                       ],
                     ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        const SizedBox(
+                          width: 100,
+                          child: Text('COM_C (灯控)\n可选:', style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                        Expanded(
+                          flex: 3,
+                          child: DropdownButton<String>(
+                            value: selectedComC,
+                            isExpanded: true,
+                            hint: const Text('未选择'),
+                            items: ports.map((p) => DropdownMenuItem(value: p, child: Text(p))).toList(),
+                            onChanged: (val) => setState(() => selectedComC = val),
+                          )
+                        ),
+                        const SizedBox(width: 16),
+                        const Text('波特率:'),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          flex: 2,
+                          child: DropdownButton<int>(
+                            value: _baudRateC,
+                            isExpanded: true,
+                            items: _baudOptions.map((e) => DropdownMenuItem(value: int.parse(e), child: Text(e))).toList(),
+                            onChanged: (val) => setState(() => _baudRateC = val!),
+                          )
+                        ),
+                        const SizedBox(width: 16),
+                        const Text('校验:'),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          flex: 2,
+                          child: DropdownButton<int>(
+                            value: _parityC,
+                            isExpanded: true,
+                            items: const [
+                              DropdownMenuItem(value: SerialPortParity.none, child: Text('无(None)')),
+                              DropdownMenuItem(value: SerialPortParity.odd, child: Text('奇(Odd)')),
+                              DropdownMenuItem(value: SerialPortParity.even, child: Text('偶(Even)')),
+                            ],
+                            onChanged: (val) => setState(() => _parityC = val!),
+                          )
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 8),
                     Row(
                       children: [
@@ -289,12 +387,14 @@ class _SerialConfigDialogState extends State<SerialConfigDialog> {
                                 items: const [
                                   DropdownMenuItem(value: 'COM_B', child: Text('COM_B (24路采集器)')),
                                   DropdownMenuItem(value: 'COM_A', child: Text('COM_A (电机控制器)')),
+                                  DropdownMenuItem(value: 'COM_C', child: Text('COM_C (灯控模块)')),
                                 ],
                                 onChanged: (val) {
                                   setState(() {
                                     _targetBus = val!;
                                     if (_targetBus == 'COM_A') _actionType = 'motor_address';
                                     if (_targetBus == 'COM_B') _actionType = 'collector_address';
+                                    if (_targetBus == 'COM_C') _actionType = 'light_address';
                                   });
                                 },
                               ),
@@ -328,10 +428,13 @@ class _SerialConfigDialogState extends State<SerialConfigDialog> {
                                   DropdownMenuItem(value: 'collector_address', child: Text('修改设备地址 (Reg:0x0050)')),
                                   DropdownMenuItem(value: 'collector_baud', child: Text('修改波特率码 (Reg:0x0051)')),
                                   DropdownMenuItem(value: 'collector_parity', child: Text('修改校验位码 (Reg:0x0052)')),
-                                ] : const [
+                                ] : _targetBus == 'COM_A' ? const [
                                   DropdownMenuItem(value: 'motor_address', child: Text('修改设备地址 (Reg:0x0032)')),
                                   DropdownMenuItem(value: 'motor_baud', child: Text('修改波特率码 (Reg:0x0033)')),
                                   DropdownMenuItem(value: 'motor_mode', child: Text('修改工作模式 (Reg:0x0097)')),
+                                ] : const [
+                                  DropdownMenuItem(value: 'light_address', child: Text('修改设备地址 (Reg:0x0032)')),
+                                  DropdownMenuItem(value: 'light_baud', child: Text('修改波特率码 (Reg:0x0033)')),
                                 ],
                                 onChanged: (val) => setState(() => _actionType = val!),
                               ),
