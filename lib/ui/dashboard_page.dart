@@ -577,6 +577,24 @@ class _MotorCardState extends State<_MotorCard> {
                             ' / ${widget.motor.targetLoops == 0 ? '-' : widget.motor.targetLoops}',
                             style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
                           ),
+                          const SizedBox(width: 6),
+                          SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: IconButton(
+                              padding: EdgeInsets.zero,
+                              iconSize: 14,
+                              tooltip: '清零循环次数',
+                              icon: Icon(Icons.refresh, size: 14, color: Colors.grey.shade400),
+                              onPressed: widget.motor.isRunning
+                                  ? null
+                                  : () {
+                                      final state = context.read<MotorState>();
+                                      final idx = state.motors.indexOf(widget.motor);
+                                      if (idx >= 0) state.resetLoopCount(idx);
+                                    },
+                            ),
+                          ),
                         ],
                       ),
                     ],

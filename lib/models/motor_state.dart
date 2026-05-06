@@ -146,6 +146,7 @@ class MotorState extends ChangeNotifier {
         'timestamp': DateTime.now().toIso8601String(),
         'qr_code': motor.qrCode,
         'motor_id': motor.motorId,
+        'loop_count': motor.currentLoop,
         'trip_current': current,
         'limit_value': current > upperLimit ? upperLimit : lowerLimit,
         'action_taken': 'Auto Stop (Out of Bound)',
@@ -171,6 +172,14 @@ class MotorState extends ChangeNotifier {
       _motors[index].actualCurrent = 0.0; // 清空残留的越界电流显示
       notifyListeners();
       _syncTrafficLights();
+    }
+  }
+
+  /// 手动清零单台电机循环次数
+  void resetLoopCount(int index) {
+    if (index >= 0 && index < 25) {
+      _motors[index].currentLoop = 0;
+      notifyListeners();
     }
   }
 
@@ -306,12 +315,12 @@ class MotorState extends ChangeNotifier {
           notifyListeners();
 
           // 2. 数据采集探测逻辑 (防浪涌采�?
-          // 仅当这是一个运转指令，并且大于3秒，并且这轮还没采集过时，执�?延时2~3秒后采集"
-          if (shouldCollect && !hasCollectedThisLoop && step.action != 'stop' && step.duration >= 3) {
+          // 仅当这是一个运转指令，并且大2秒，并且这轮还没采集过时，执�?延时2~3秒后采集"
+          if (shouldCollect && !hasCollectedThisLoop && step.action != 'stop' && step.duration >= 2) {
              hasCollectedThisLoop = true;
              
-             // 拆分等待：先�?秒（避开浪涌�?
-             await Future.delayed(const Duration(seconds: 2));
+             // 拆分等待：先等待1秒（避开浪涌�?
+             await Future.delayed(const Duration(seconds: 1));
              if (motor.runToken != myRunToken) break;
              if (!motor.isRunning) break; 
              
@@ -349,8 +358,8 @@ class MotorState extends ChangeNotifier {
              }
 
              // 剩下的时间继续等�?
-             if (step.duration > 2) {
-               int remain = step.duration - 2;
+             if (step.duration > 1) {
+               int remain = step.duration - 1;
                await Future.delayed(Duration(seconds: remain));
              }
           } else {

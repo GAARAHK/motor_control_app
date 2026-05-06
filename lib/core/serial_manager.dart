@@ -349,7 +349,7 @@ return success;
   /// 读取指定路(通道)的实际电流值
   /// 注意这里通道1 对应寄存器 0x0000, 故寄存器地址 = channel - 1
   /// 由于采集模块自身地址固定（假设为 1），可配置参数
-  Future<double?> readCurrentChannel(int channel, {int deviceAddress = 1, double rangeMax = 60.0}) async {
+  Future<double?> readCurrentChannel(int channel, {int deviceAddress = 1, double rangeMax = 2.0}) async {
     if (_comB == null || !_comB!.isOpen) return null;
 
     int lockWaitCount = 0;

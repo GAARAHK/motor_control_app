@@ -14,6 +14,9 @@ class _SerialConfigDialogState extends State<SerialConfigDialog> {
   static const _kBaudRateAKey = 'serial_last_baud_rate_a';
   static const _kBaudRateBKey = 'serial_last_baud_rate_b';
   static const _kBaudRateCKey = 'serial_last_baud_rate_c';
+  static const _kPortAKey    = 'serial_last_port_a';
+  static const _kPortBKey    = 'serial_last_port_b';
+  static const _kPortCKey    = 'serial_last_port_c';
 
   String? selectedComA;
   String? selectedComB;
@@ -39,6 +42,7 @@ class _SerialConfigDialogState extends State<SerialConfigDialog> {
   @override
   void initState() {
     super.initState();
+    // 先从运行时内存恢复（本次已连接的情况）
     selectedComA = SerialManager().portAName;
     selectedComB = SerialManager().portBName;
     selectedComC = SerialManager().portCName;
@@ -46,35 +50,51 @@ class _SerialConfigDialogState extends State<SerialConfigDialog> {
     if (selectedComA != null && !ports.contains(selectedComA)) selectedComA = null;
     if (selectedComB != null && !ports.contains(selectedComB)) selectedComB = null;
     if (selectedComC != null && !ports.contains(selectedComC)) selectedComC = null;
-    _loadLastBaudRates();
+    _loadLastSettings();
   }
 
-  Future<void> _loadLastBaudRates() async {
+  Future<void> _loadLastSettings() async {
     final prefs = await SharedPreferences.getInstance();
     final int? savedA = prefs.getInt(_kBaudRateAKey);
     final int? savedB = prefs.getInt(_kBaudRateBKey);
     final int? savedC = prefs.getInt(_kBaudRateCKey);
+    final String? savedPortA = prefs.getString(_kPortAKey);
+    final String? savedPortB = prefs.getString(_kPortBKey);
+    final String? savedPortC = prefs.getString(_kPortCKey);
     final Set<int> validRates = _baudOptions.map(int.parse).toSet();
+    final List<String> ports = SerialManager().availablePorts;
 
     if (!mounted) return;
     setState(() {
-      if (savedA != null && validRates.contains(savedA)) {
-        _baudRateA = savedA;
+      if (savedA != null && validRates.contains(savedA)) _baudRateA = savedA;
+      if (savedB != null && validRates.contains(savedB)) _baudRateB = savedB;
+      if (savedC != null && validRates.contains(savedC)) _baudRateC = savedC;
+      // 仅当上次保存的端口在当前系统中仍然存在时才回填
+      if (savedPortA != null && ports.contains(savedPortA) && selectedComA == null) {
+        selectedComA = savedPortA;
       }
-      if (savedB != null && validRates.contains(savedB)) {
-        _baudRateB = savedB;
+      if (savedPortB != null && ports.contains(savedPortB) && selectedComB == null) {
+        selectedComB = savedPortB;
       }
-      if (savedC != null && validRates.contains(savedC)) {
-        _baudRateC = savedC;
+      if (savedPortC != null && ports.contains(savedPortC) && selectedComC == null) {
+        selectedComC = savedPortC;
       }
     });
   }
 
-  Future<void> _saveLastBaudRates() async {
+  Future<void> _saveLastSettings() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_kBaudRateAKey, _baudRateA);
     await prefs.setInt(_kBaudRateBKey, _baudRateB);
     await prefs.setInt(_kBaudRateCKey, _baudRateC);
+    if (selectedComA != null) await prefs.setString(_kPortAKey, selectedComA!);
+    if (selectedComB != null) await prefs.setString(_kPortBKey, selectedComB!);
+    // COM_C 可选：有选就保存，清空时移除
+    if (selectedComC != null) {
+      await prefs.setString(_kPortCKey, selectedComC!);
+    } else {
+      await prefs.remove(_kPortCKey);
+    }
   }
 
   @override
@@ -107,7 +127,7 @@ class _SerialConfigDialogState extends State<SerialConfigDialog> {
       parityC: _parityC,
     );
     if (success) {
-      await _saveLastBaudRates();
+      await _saveLastSettings();
     }
     setState(() {}); // 刷新转态
     if (!mounted) return;

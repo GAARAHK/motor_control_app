@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -34,7 +34,7 @@ class DatabaseHelper {
     return await databaseFactory.openDatabase(
       dbPath,
       options: OpenDatabaseOptions(
-        version: 3, // v3: 新增查询索引优化
+        version: 4, // v4: alarm_logs 新增 loop_count 字段
         onCreate: _createDB,
         onUpgrade: (db, oldVersion, newVersion) async {
           if (oldVersion < 2) {
@@ -57,6 +57,10 @@ class DatabaseHelper {
             await db.execute('CREATE INDEX IF NOT EXISTS idx_current_logs_batch ON current_logs(batch_uuid)');
             await db.execute('CREATE INDEX IF NOT EXISTS idx_alarm_logs_qr ON alarm_logs(qr_code)');
             await db.execute('CREATE INDEX IF NOT EXISTS idx_run_history_qr ON motor_run_history(qr_code)');
+          }
+          if (oldVersion < 4) {
+            // alarm_logs 新增报警时循环次数字段，默认 -1 兼容旧数据
+            await db.execute('ALTER TABLE alarm_logs ADD COLUMN loop_count INTEGER NOT NULL DEFAULT -1');
           }
         }
       ),
@@ -118,6 +122,7 @@ class DatabaseHelper {
         timestamp TEXT NOT NULL,
         qr_code TEXT NOT NULL,
         motor_id INTEGER NOT NULL,
+        loop_count INTEGER NOT NULL DEFAULT -1,
         trip_current REAL NOT NULL,
         limit_value REAL NOT NULL,
         action_taken TEXT NOT NULL
@@ -201,6 +206,7 @@ class DatabaseHelper {
         'Alarm' AS batch_uuid,
         motor_id,
         -1 AS loop_count,
+        loop_count,
         trip_current AS read_current,
         '触发报警异常 (限值: ' || limit_value || ')' AS log_type
       FROM alarm_logs
@@ -274,14 +280,14 @@ class DatabaseHelper {
 
     if (logType == 'normal') {
       sql = '''
-        SELECT timestamp, batch_uuid, motor_id, loop_count, read_current, '正常记录' AS log_type
+        SELECT timestamp, batch_uuid, motor_id, qr_code, loop_count, read_current, '正常记录' AS log_type
         FROM current_logs $nw
         ORDER BY timestamp ASC
       ''';
       args = normalArgs;
     } else if (logType == 'alarm') {
       sql = '''
-        SELECT timestamp, 'Alarm' AS batch_uuid, motor_id, -1 AS loop_count,
+        SELECT timestamp, 'Alarm' AS batch_uuid, motor_id, qr_code, loop_count,
                trip_current AS read_current,
                '触发报警异常 (限值: ' || limit_value || ')' AS log_type
         FROM alarm_logs $aw
@@ -291,12 +297,12 @@ class DatabaseHelper {
     } else {
       // all: UNION ALL 合并
       sql = '''
-        SELECT timestamp, batch_uuid, motor_id, loop_count, read_current, '正常记录' AS log_type
+        SELECT timestamp, batch_uuid, motor_id, qr_code, loop_count, read_current, '正常记录' AS log_type
         FROM current_logs $nw
 
         UNION ALL
 
-        SELECT timestamp, 'Alarm' AS batch_uuid, motor_id, -1 AS loop_count,
+        SELECT timestamp, 'Alarm' AS batch_uuid, motor_id, qr_code, loop_count,
                trip_current AS read_current,
                '触发报警异常 (限值: ' || limit_value || ')' AS log_type
         FROM alarm_logs $aw

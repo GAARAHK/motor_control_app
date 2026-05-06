@@ -477,6 +477,7 @@ class _HistoryPageState extends State<HistoryPage> {
                                       ),
                                       columns: const [
                                         DataColumn(label: Text('采集时间')),
+                                        DataColumn(label: Text('产品二维码')),
                                         DataColumn(label: Text('数据类型')),
                                         DataColumn(label: Text('批次ID')),
                                         DataColumn(label: Text('通道/电机')),
@@ -508,6 +509,8 @@ class _HistoryPageState extends State<HistoryPage> {
                                           cells: [
                                             DataCell(Text(timeStr)),
                                             DataCell(Text(
+                                                row['qr_code']?.toString() ?? '-')),
+                                            DataCell(Text(
                                               row['log_type'].toString(),
                                               style: TextStyle(
                                                 color: isAlarm
@@ -523,7 +526,7 @@ class _HistoryPageState extends State<HistoryPage> {
                                             DataCell(Text(
                                                 'CH-${row['motor_id'].toString().padLeft(2, '0')}')),
                                             DataCell(Text(
-                                                row['loop_count'] == -1
+                                                row['loop_count'] == null || row['loop_count'] == -1
                                                     ? '-'
                                                     : row['loop_count']
                                                         .toString())),
